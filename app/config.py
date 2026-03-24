@@ -1,0 +1,24 @@
+from __future__ import annotations
+
+import os
+from dataclasses import dataclass
+from dotenv import load_dotenv
+
+load_dotenv()
+
+
+@dataclass(frozen=True)
+class Settings:
+    telegram_bot_token: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    twelvedata_api_key: str = os.getenv("TWELVEDATA_API_KEY", "")
+    newsapi_api_key: str = os.getenv("NEWSAPI_API_KEY", "")
+    fmp_api_key: str = os.getenv("FMP_API_KEY", "")
+    default_timezone: str = os.getenv("DEFAULT_TIMEZONE", "Europe/Istanbul")
+    default_pairs: tuple[str, ...] = tuple(
+        p.strip().upper() for p in os.getenv("DEFAULT_PAIRS", "XAU/USD,EUR/USD,GBP/USD").split(",") if p.strip()
+    )
+    alert_scan_minutes: int = int(os.getenv("ALERT_SCAN_MINUTES", "5"))
+    daily_plan_hour: int = int(os.getenv("DAILY_PLAN_HOUR", "8"))
+
+
+settings = Settings()

@@ -1,0 +1,18 @@
+[
+  {
+    "chat_id": 7817666361,
+    "symbol": "XAUUSD",
+    "timeframe": "5min",
+    "result": "win",
+    "rr": 2.1,
+    "created_at": "2026-03-24T01:16:47"
+  },
+  {
+    "chat_id": 7817666361,
+    "symbol": "XAUUSD",
+    "timeframe": "5min",
+    "result": "loss",
+    "rr": -1.0,
+    "created_at": "2026-03-24T01:17:07"
+  }
+]
