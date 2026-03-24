@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Forex Bot Local Panel</title>
+  <style>
+    :root {
+      --bg: #f6f7fb;
+      --card: #ffffff;
+      --text: #1d2635;
+      --muted: #5e6b82;
+      --accent: #007a5a;
+      --border: #d9e0ea;
+    }
+    body {
+      margin: 0;
+      font-family: Segoe UI, Arial, sans-serif;
+      background: linear-gradient(180deg, #f6f7fb 0%, #eef3ff 100%);
+      color: var(--text);
+    }
+    .wrap {
+      max-width: 1200px;
+      margin: 24px auto;
+      padding: 0 16px;
+    }
+    .grid {
+      display: grid;
+      gap: 14px;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px;
+      box-shadow: 0 8px 24px rgba(28, 39, 66, 0.06);
+    }
+    h1, h2, h3 { margin-top: 0; }
+    p { color: var(--muted); }
+    input, select, button {
+      width: 100%;
+      margin: 6px 0;
+      padding: 10px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      box-sizing: border-box;
+    }
+    button {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    th, td {
+      border-bottom: 1px solid #e8edf5;
+      text-align: left;
+      padding: 8px 4px;
+    }
+    .small { font-size: 12px; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Forex Bot Local Panel</h1>
+    <p>Bot metrikleri, watchlist yonetimi ve runtime ayarlar.</p>
+
+    <div class="grid">
+      <section class="card">
+        <h3>Ozet</h3>
+        <p>Total Trades: {{ summary.total_trades }}</p>
+        <p>Win / Loss: {{ summary.wins }} / {{ summary.losses }}</p>
+        <p>Winrate: %{{ summary.winrate }}</p>
+        <p>Net RR: {{ summary.net_rr }}</p>
+        <p>Total Signals: {{ summary.total_signals }}</p>
+        <p>No Trade Rate: %{{ summary.no_trade_rate }}</p>
+      </section>
+
+      <section class="card">
+        <h3>Session Filter</h3>
+        <form method="post" action="/settings/session-filter">
+          <select name="enabled">
+            <option value="1" {% if settings.get("session_filter_enabled", "1") == "1" %}selected{% endif %}>Acik</option>
+            <option value="0" {% if settings.get("session_filter_enabled", "1") == "0" %}selected{% endif %}>Kapali</option>
+          </select>
+          <button type="submit">Kaydet</button>
+        </form>
+        <p class="small">London + New York disi sinyal/alerti keser.</p>
+      </section>
+
+      <section class="card">
+        <h3>Alert Esikleri</h3>
+        <form method="post" action="/settings/alerts">
+          <label>Min Quality</label>
+          <select name="min_quality">
+            <option value="A" {% if settings.get("min_quality_for_alert", "A") == "A" %}selected{% endif %}>A</option>
+            <option value="B" {% if settings.get("min_quality_for_alert", "A") == "B" %}selected{% endif %}>B</option>
+            <option value="C" {% if settings.get("min_quality_for_alert", "A") == "C" %}selected{% endif %}>C</option>
+          </select>
+          <label>Min Score</label>
+          <input type="number" name="min_score" value="{{ settings.get('min_score_for_alert', '80') }}" min="1" max="100" />
+          <label>Min RR</label>
+          <input type="number" name="min_rr" value="{{ settings.get('min_rr_for_alert', '2.0') }}" step="0.1" min="0.1" />
+          <button type="submit">Guncelle</button>
+        </form>
+      </section>
+
+      <section class="card">
+        <h3>Watch Ekle</h3>
+        <form method="post" action="/watch/add">
+          <input name="chat_id" type="number" placeholder="chat id" required />
+          <input name="symbol" type="text" placeholder="XAUUSD" required />
+          <input name="timeframe" type="text" placeholder="5min" required />
+          <button type="submit">Ekle</button>
+        </form>
+      </section>
+
+      <section class="card">
+        <h3>Watch Sil</h3>
+        <form method="post" action="/watch/remove">
+          <input name="chat_id" type="number" placeholder="chat id" required />
+          <input name="symbol" type="text" placeholder="XAUUSD" required />
+          <input name="timeframe" type="text" placeholder="opsiyonel timeframe" />
+          <button type="submit">Sil</button>
+        </form>
+      </section>
+
+      <section class="card">
+        <h3>Trade Ekle</h3>
+        <form method="post" action="/trade/add">
+          <input name="chat_id" type="number" placeholder="chat id" required />
+          <input name="symbol" type="text" placeholder="XAUUSD" required />
+          <input name="timeframe" type="text" placeholder="5min" required />
+          <select name="result">
+            <option value="win">win</option>
+            <option value="loss">loss</option>
+          </select>
+          <input name="rr" type="number" step="0.1" placeholder="2.0 / -1.0" required />
+          <button type="submit">Kaydet</button>
+        </form>
+      </section>
+    </div>
+
+    <section class="card" style="margin-top: 14px;">
+      <h3>Watchlist Gruplari</h3>
+      <table>
+        <thead>
+          <tr><th>Chat ID</th><th>Items</th></tr>
+        </thead>
+        <tbody>
+        {% for chat_id, items in watch_groups.items() %}
+          <tr>
+            <td>{{ chat_id }}</td>
+            <td>
+              {% for item in items %}
+                {{ item.symbol }} {{ item.timeframe }}{% if not loop.last %}, {% endif %}
+              {% endfor %}
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      <p class="small">Daily subscribers: {{ daily_subscribers|length }}</p>
+    </section>
+
+    <section class="card" style="margin-top: 14px;">
+      <h3>Recent Signals</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th><th>Time</th><th>Source</th><th>Symbol</th><th>TF</th><th>Signal</th><th>Q</th><th>Score</th><th>RR</th><th>Session</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for row in recent_signals %}
+          <tr>
+            <td>{{ row.id }}</td>
+            <td>{{ row.created_at }}</td>
+            <td>{{ row.source }}</td>
+            <td>{{ row.symbol }}</td>
+            <td>{{ row.timeframe }}</td>
+            <td>{{ row.signal }}</td>
+            <td>{{ row.quality }}</td>
+            <td>{{ row.setup_score }}</td>
+            <td>{{ row.rr_ratio }}</td>
+            <td>{{ row.session_name }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </section>
+  </div>
+</body>
+</html>

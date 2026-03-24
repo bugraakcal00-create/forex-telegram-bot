@@ -50,6 +50,32 @@ class AnalysisEngine:
         return true_range.rolling(period).mean()
 
     @staticmethod
+    def _adx(df: pd.DataFrame, period: int = 14) -> pd.Series:
+        high = df["high"]
+        low = df["low"]
+        close = df["close"]
+
+        up_move = high.diff()
+        down_move = -low.diff()
+        plus_dm = up_move.where((up_move > down_move) & (up_move > 0), 0.0)
+        minus_dm = down_move.where((down_move > up_move) & (down_move > 0), 0.0)
+
+        tr = pd.concat(
+            [
+                high - low,
+                (high - close.shift()).abs(),
+                (low - close.shift()).abs(),
+            ],
+            axis=1,
+        ).max(axis=1)
+
+        atr = tr.rolling(period).mean()
+        plus_di = 100 * (plus_dm.rolling(period).mean() / atr.replace(0, np.nan))
+        minus_di = 100 * (minus_dm.rolling(period).mean() / atr.replace(0, np.nan))
+        dx = ((plus_di - minus_di).abs() / (plus_di + minus_di).replace(0, np.nan)) * 100
+        return dx.rolling(period).mean()
+
+    @staticmethod
     def _cluster_levels(values: list[float], tolerance_ratio: float = 0.0025) -> list[float]:
         if not values:
             return []
@@ -96,7 +122,7 @@ class AnalysisEngine:
         data["ema_20"] = data["close"].ewm(span=20, adjust=False).mean()
         data["ema_50"] = data["close"].ewm(span=50, adjust=False).mean()
         last = data.iloc[-1]
-        return "Yukarı" if float(last["ema_20"]) > float(last["ema_50"]) else "Aşağı"
+        return "Yukari" if float(last["ema_20"]) > float(last["ema_50"]) else "Asagi"
 
     @staticmethod
     def _quality_from_score(score: int) -> str:
@@ -128,6 +154,14 @@ class AnalysisEngine:
         prev = df.iloc[-2]
         return bool(float(last["high"]) > float(prev["high"]) or float(last["low"]) < float(prev["low"]))
 
+    @staticmethod
+    def _close_location(candle: pd.Series) -> float:
+        high = float(candle["high"])
+        low = float(candle["low"])
+        close = float(candle["close"])
+        rng = max(high - low, 1e-9)
+        return (close - low) / rng
+
     def _detect_liquidity_sweep(self, df: pd.DataFrame, supports: list[float], resistances: list[float]) -> str:
         if len(df) < 3:
             return "Yok"
@@ -142,7 +176,7 @@ class AnalysisEngine:
             bearish_close = float(last["close"]) < float(last["open"])
             long_upper_wick = self._upper_wick(last) > self._body_size(last) * 1.2
             if wick_above and close_back_below and bearish_close and long_upper_wick:
-                return "Direnç üstü likidite alınıp geri dönüldü"
+                return "Direnc ustu likidite alinip geri donuldu"
 
         if supports:
             nearest_sup = min(supports, key=lambda x: abs(x - float(last["close"])))
@@ -151,12 +185,12 @@ class AnalysisEngine:
             bullish_close = float(last["close"]) > float(last["open"])
             long_lower_wick = self._lower_wick(last) > self._body_size(last) * 1.2
             if wick_below and close_back_above and bullish_close and long_lower_wick:
-                return "Destek altı likidite alınıp geri dönüldü"
+                return "Destek alti likidite alinip geri donuldu"
 
         if float(last["high"]) > float(prev["high"]) and float(last["close"]) < float(prev["high"]):
-            return "Yukarı fake breakout ihtimali"
+            return "Yukari fake breakout ihtimali"
         if float(last["low"]) < float(prev["low"]) and float(last["close"]) > float(prev["low"]):
-            return "Aşağı fake breakout ihtimali"
+            return "Asagi fake breakout ihtimali"
 
         return "Yok"
 
@@ -175,24 +209,26 @@ class AnalysisEngine:
         prev = df.iloc[-2]
         bos = self._bos(df)
 
-        if trend == "Aşağı" and higher_tf_trend == "Aşağı" and resistances:
+        if trend == "Asagi" and higher_tf_trend == "Asagi" and resistances:
             nearest_res = min(resistances, key=lambda x: abs(x - float(last["close"])))
             touched_above = float(last["high"]) >= nearest_res
             closed_below = float(last["close"]) < nearest_res
             bearish_candle = float(last["close"]) < float(last["open"])
             wick_rejection = self._upper_wick(last) > self._body_size(last) * 1.5
             fake_break = float(last["high"]) > float(prev["high"]) and float(last["close"]) < float(prev["high"])
-            if touched_above and closed_below and bearish_candle and (wick_rejection or fake_break) and bos:
-                return "SHORT sniper: direnç sweep + rejection"
+            close_low_half = self._close_location(last) <= 0.45
+            if touched_above and closed_below and bearish_candle and (wick_rejection or fake_break) and bos and close_low_half:
+                return "SHORT sniper: direnc sweep + rejection"
 
-        if trend == "Yukarı" and higher_tf_trend == "Yukarı" and supports:
+        if trend == "Yukari" and higher_tf_trend == "Yukari" and supports:
             nearest_sup = min(supports, key=lambda x: abs(x - float(last["close"])))
             touched_below = float(last["low"]) <= nearest_sup
             closed_above = float(last["close"]) > nearest_sup
             bullish_candle = float(last["close"]) > float(last["open"])
             wick_rejection = self._lower_wick(last) > self._body_size(last) * 1.5
             fake_break = float(last["low"]) < float(prev["low"]) and float(last["close"]) > float(prev["low"])
-            if touched_below and closed_above and bullish_candle and (wick_rejection or fake_break) and bos:
+            close_high_half = self._close_location(last) >= 0.55
+            if touched_below and closed_above and bullish_candle and (wick_rejection or fake_break) and bos and close_high_half:
                 return "LONG sniper: destek sweep + rejection"
 
         return "Yok"
@@ -211,6 +247,7 @@ class AnalysisEngine:
         data["ema_200"] = data["close"].ewm(span=200, adjust=False).mean()
         data["rsi"] = self._rsi(data["close"])
         data["atr"] = self._atr(data)
+        data["adx"] = self._adx(data)
 
         last = data.iloc[-1]
         current_price = float(last["close"])
@@ -219,6 +256,7 @@ class AnalysisEngine:
         ema200 = float(last["ema_200"]) if not isnan(float(last["ema_200"])) else current_price
         rsi = float(last["rsi"]) if not isnan(float(last["rsi"])) else 50.0
         atr = float(last["atr"]) if not isnan(float(last["atr"])) else max(current_price * 0.002, 0.001)
+        adx = float(last["adx"]) if not isnan(float(last["adx"])) else 18.0
 
         supports, resistances = self._find_levels(data)
         nearest_supports = [lvl for lvl in supports if lvl < current_price][-3:]
@@ -227,19 +265,20 @@ class AnalysisEngine:
         lower_support = nearest_supports[-1] if nearest_supports else round(current_price - atr * 1.5, 5)
         upper_resistance = nearest_resistances[0] if nearest_resistances else round(current_price + atr * 1.5, 5)
 
-        trend = "Yukarı" if ema20 > ema50 else "Aşağı"
+        trend = "Yukari" if ema20 > ema50 else "Asagi"
         higher_tf_trend = self._trend_from_df(higher_tf_df) if higher_tf_df is not None else trend
 
         price_to_support = abs(current_price - lower_support)
         price_to_resistance = abs(upper_resistance - current_price)
         near_support = price_to_support <= atr * 0.9
         near_resistance = price_to_resistance <= atr * 0.9
+        trend_strength_ok = adx >= 18
 
         sweep_signal = self._detect_liquidity_sweep(data.tail(10), supports, resistances)
         sniper_entry = self._detect_sniper_entry(data.tail(10), trend, higher_tf_trend, supports, resistances)
 
         signal = "NO TRADE"
-        reason = "Kaliteli scalp kurulum oluşmadı."
+        reason = "Kaliteli scalp kurulumu olusmadi."
         no_trade_reasons: list[str] = []
 
         entry_zone = (round(current_price - atr * 0.2, 5), round(current_price + atr * 0.2, 5))
@@ -248,24 +287,26 @@ class AnalysisEngine:
         take_profit_2 = round(current_price + atr * 1.5, 5)
 
         long_ok = (
-            trend == "Yukarı"
-            and higher_tf_trend == "Yukarı"
+            trend == "Yukari"
+            and higher_tf_trend == "Yukari"
             and current_price > ema200
             and 50 <= rsi <= 62
             and near_support
+            and trend_strength_ok
         )
 
         short_ok = (
-            trend == "Aşağı"
-            and higher_tf_trend == "Aşağı"
+            trend == "Asagi"
+            and higher_tf_trend == "Asagi"
             and current_price < ema200
             and 38 <= rsi <= 50
             and near_resistance
+            and trend_strength_ok
         )
 
         if long_ok:
             signal = "LONG"
-            reason = "Scalp long kurulumu: trend yukarı, üst TF onaylı, fiyat destek yakınında."
+            reason = "Scalp long: trend yukari, ust TF onayli, fiyat destek yakininda."
             entry_zone = (
                 round(lower_support + atr * 0.10, 5),
                 round(lower_support + atr * 0.25, 5),
@@ -277,7 +318,7 @@ class AnalysisEngine:
 
         elif short_ok:
             signal = "SHORT"
-            reason = "Scalp short kurulumu: trend aşağı, üst TF onaylı, fiyat direnç yakınında."
+            reason = "Scalp short: trend asagi, ust TF onayli, fiyat direnc yakininda."
             entry_zone = (
                 round(upper_resistance - atr * 0.25, 5),
                 round(upper_resistance - atr * 0.10, 5),
@@ -294,21 +335,23 @@ class AnalysisEngine:
         atr_ratio = atr / current_price if current_price else 0.0
 
         if atr_ratio < 0.0012:
-            no_trade_reasons.append("Scalp için volatilite düşük")
+            no_trade_reasons.append("Scalp icin volatilite dusuk")
+        if adx < 18:
+            no_trade_reasons.append("Trend gucu dusuk (ADX)")
         if rr_ratio < 1.8:
             no_trade_reasons.append("R/R yetersiz")
         if rsi > 65 or rsi < 35:
-            no_trade_reasons.append("RSI aşırı bölgede")
+            no_trade_reasons.append("RSI asiri bolgede")
         if signal == "LONG" and not near_support:
-            no_trade_reasons.append("Fiyat destek bölgesine yakın değil")
+            no_trade_reasons.append("Fiyat destek bolgesine yakin degil")
         if signal == "SHORT" and not near_resistance:
-            no_trade_reasons.append("Fiyat direnç bölgesine yakın değil")
+            no_trade_reasons.append("Fiyat direnc bolgesine yakin degil")
         if signal != "NO TRADE" and trend != higher_tf_trend:
-            no_trade_reasons.append("Üst zaman dilimi trend onayı yok")
+            no_trade_reasons.append("Ust zaman dilimi trend onayi yok")
         if high_impact_events:
-            no_trade_reasons.append("Yüksek etkili haber riski")
+            no_trade_reasons.append("Yuksek etkili haber riski")
         if signal == "NO TRADE":
-            no_trade_reasons.append("Ana kurulum şartları oluşmadı")
+            no_trade_reasons.append("Ana kurulum sartlari olusmadi")
 
         score = 0
         if trend == higher_tf_trend:
@@ -331,6 +374,10 @@ class AnalysisEngine:
             score += 8
         if signal == "SHORT" and 40 <= rsi <= 48:
             score += 8
+        if adx >= 22:
+            score += 8
+        elif adx >= 18:
+            score += 4
         if sweep_signal != "Yok":
             score += 12
         if sniper_entry != "Yok":
@@ -389,6 +436,6 @@ class AnalysisEngine:
             f"Entry: {entry:.5f}\n"
             f"SL: {stop_loss:.5f}\n"
             f"Stop mesafesi: {stop_distance:.5f}\n"
-            f"Teorik pozisyon büyüklüğü: {units:.2f} birim\n"
-            f"Not: Lot hesaplaması broker sözleşme boyutuna göre ayrıca uyarlanmalı."
+            f"Teorik pozisyon buyuklugu: {units:.2f} birim\n"
+            "Not: Lot hesaplamasi broker sozlesme boyutuna gore ayrica uyarlanmalidir."
         )
