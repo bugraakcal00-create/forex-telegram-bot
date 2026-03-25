@@ -49,7 +49,11 @@ class BacktestService:
 
         for idx in range(warmup_bars, len(df) - lookahead_bars):
             slice_df = df.iloc[: idx + 1].copy()
-            htf_slice = higher_df.copy()
+            if "datetime" in slice_df.columns and "datetime" in higher_df.columns:
+                end_time = slice_df.iloc[-1]["datetime"]
+                htf_slice = higher_df[higher_df["datetime"] <= end_time].copy()
+            else:
+                htf_slice = higher_df.iloc[: idx + 1].copy()
             result = self.engine.analyze(
                 symbol=symbol,
                 df=slice_df,
@@ -76,7 +80,7 @@ class BacktestService:
         tested_signals = wins + losses + no_result
         winrate = round((wins / tested_signals) * 100, 2) if tested_signals else 0.0
         avg_rr = round(sum(rr_values) / len(rr_values), 3) if rr_values else 0.0
-        expectancy = round((wins / tested_signals) * avg_rr if tested_signals else 0.0, 3)
+        expectancy = round(sum(rr_values) / tested_signals, 3) if tested_signals else 0.0
 
         return BacktestResult(
             tested_signals=tested_signals,

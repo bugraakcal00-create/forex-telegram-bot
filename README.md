@@ -1,88 +1,96 @@
-# Forex Telegram Bot - Aşama 1 + Aşama 2
+# Forex Telegram Scalp Bot
 
-Bu proje senin istediğin iki aşamayı tek bir başlangıç paketi içinde toplar.
+Local-first Telegram bot for XAUUSD scalp workflow.
 
-## Aşama 1
-- `/signal XAUUSD 15min` ile analiz
-- destek / direnç çıkarma
-- giriş bölgesi, SL, TP, R/R hesaplama
-- haber özeti
-- ekonomik veri filtresi
-- risk hesabı
-- seans bilgisi
-- günlük trade planı komutu
+## Core Features
+- `/signal` technical analysis with multi-timeframe checks
+- support/resistance clustering
+- ATR, RSI, ADX, RR filters
+- liquidity sweep + sniper entry detection
+- ultra selective mode for high quality setups
+- watchlist based auto alert scan
+- trade journal and stats
+- local web panel for runtime controls
 
-## Aşama 2
-- izleme listesi
-- belirli pariteleri otomatik tarama
-- fiyat kritik bölgeye gelince Telegram alarmı
-- günlük plan aboneliği
-- otomatik sabah özeti
+## Tech Stack
+- Python 3.11+
+- python-telegram-bot
+- httpx
+- pandas / numpy
+- FastAPI + Jinja2
+- SQLite
 
-## Kullanılan servisler
-- Telegram Bot API
-- TwelveData: mum verisi / fiyat
-- NewsAPI: haberler
-- Financial Modeling Prep: ekonomik takvim
+## Project Structure
+- `main.py`: Telegram bot entrypoint
+- `web_main.py`: local web panel entrypoint
+- `app/bot.py`: handlers, jobs, signal orchestration
+- `app/services/*`: analysis and external API clients
+- `app/storage/sqlite_store.py`: persistence layer
+- `app/web/*`: local management panel
 
-## Kurulum
+## Setup
 ```bash
 python -m venv .venv
-source .venv/bin/activate  # Windows için: .venv\Scripts\activate
+.venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env
+copy .env.example .env
 ```
 
-`.env` içine kendi anahtarlarını gir:
+Fill `.env` with your secrets:
 ```env
 TELEGRAM_BOT_TOKEN=...
 TWELVEDATA_API_KEY=...
 NEWSAPI_API_KEY=...
 FMP_API_KEY=...
 DEFAULT_TIMEZONE=Europe/Istanbul
-DEFAULT_PAIRS=XAU/USD,EUR/USD,GBP/USD
-ALERT_SCAN_MINUTES=5
+DEFAULT_PAIRS=XAU/USD
+ALERT_SCAN_MINUTES=15
 DAILY_PLAN_HOUR=8
+DB_PATH=data/bot.db
+WEB_HOST=127.0.0.1
+WEB_PORT=8080
+ULTRA_SELECTIVE_MODE=1
+WEB_AUTH_ENABLED=1
+WEB_ADMIN_USER=admin
+WEB_ADMIN_PASSWORD=change_me_now
 ```
 
-## Çalıştırma
+## Run
+Telegram bot:
 ```bash
 python main.py
 ```
 
-## BotFather ile Telegram bot token alma
-1. Telegram'da `@BotFather` aç.
-2. `/newbot` yaz.
-3. Bot adı ve kullanıcı adı ver.
-4. Sana verilen token'ı `.env` dosyasına koy.
-
-## Komutlar
-```text
-/start
-/help
-/signal XAUUSD 15min
-/levels XAUUSD 15min
-/news
-/session
-/plan XAUUSD 15min
-/risk 1000 1 3030 3018
-/watch XAUUSD 15min
-/unwatch XAUUSD
-/watchlist
-/subscribe_daily
-/unsubscribe_daily
+Local web panel:
+```bash
+python web_main.py
 ```
 
-## Notlar
-- Lot hesabı broker sözleşmesine göre ayrıca uyarlanmalı.
-- Ekonomik takvim ve haberler API anahtarı yoksa boş döner.
-- Bu bot yatırım garantisi vermez; trade asistanı mantığında tasarlandı.
-- İlk geliştirme için XAUUSD / EURUSD / GBPUSD odaklıdır.
+Open:
+`http://127.0.0.1:8080`
 
-## Geliştirme fikirleri
-- MT5 bağlantısı
-- işlem geçmişi kaydı
-- kullanıcı bazlı risk profili
-- daha iyi market structure algoritması
-- screenshot gönderimi / grafik görseli
-- AI haber sınıflandırması
+## Telegram Commands
+- `/start`
+- `/signal XAUUSD 5min`
+- `/levels XAUUSD 15min`
+- `/news`
+- `/session`
+- `/session_filter_on`
+- `/session_filter_off`
+- `/plan XAUUSD 5min`
+- `/risk 1000 1 3030 3018`
+- `/watch XAUUSD 5min`
+- `/unwatch XAUUSD 5min`
+- `/watchlist`
+- `/subscribe_daily`
+- `/unsubscribe_daily`
+- `/logwin XAUUSD 5min 2.1`
+- `/logloss XAUUSD 5min -1`
+- `/stats`
+- `/todaystats`
+- `/backtest XAUUSD 5min`
+
+## Notes
+- Do not run local bot and hosted bot at the same time (polling conflict).
+- SQLite file is local. If deployed to ephemeral filesystem, data may reset.
+- This bot is an assistant tool, not profit guarantee.

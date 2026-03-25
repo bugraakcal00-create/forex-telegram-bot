@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import time
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from telegram import Update
 from telegram.constants import ParseMode
-from telegram.ext import Application, CallbackContext, CommandHandler, ContextTypes
+from telegram.ext import Application, CallbackContext, CommandHandler, ContextTypes, Defaults
 
 from app.config import settings
 from app.services.analysis_engine import AnalysisEngine, AnalysisResult
@@ -30,6 +31,8 @@ engine = AnalysisEngine()
 backtest_service = BacktestService(engine=engine)
 repo = BotRepository(db_path=Path(settings.db_path))
 
+QUALITY_RANK = {"A": 4, "B": 3, "C": 2, "D": 1}
+
 
 def parse_symbol_and_tf(args: list[str]) -> tuple[str, str]:
     symbol = args[0].upper() if args else "XAUUSD"
@@ -41,6 +44,10 @@ def session_filter_enabled() -> bool:
     return repo.get_setting("session_filter_enabled", "1") == "1"
 
 
+def quality_meets_min(current_quality: str, min_quality: str) -> bool:
+    return QUALITY_RANK.get(current_quality.upper(), 0) >= QUALITY_RANK.get(min_quality.upper(), 0)
+
+
 def session_text() -> str:
     status = get_session_status(settings.default_timezone)
     return (
@@ -49,6 +56,7 @@ def session_text() -> str:
         "New York: 15:30 - 24:00\n"
         f"Durum: {status.session_name}\n"
         f"Session filtresi: {'ACIK' if session_filter_enabled() else 'KAPALI'}\n"
+        f"Ultra selective mode: {'ACIK' if settings.ultra_selective_mode else 'KAPALI'}\n"
         f"Sonraki acilis: {status.next_open_text}"
     )
 
@@ -123,6 +131,56 @@ def format_signal(result: AnalysisResult, events: list[dict[str, str]]) -> str:
     return msg
 
 
+def _apply_ultra_selective_gate(result: AnalysisResult, events: list[dict[str, str]]) -> AnalysisResult:
+    if not settings.ultra_selective_mode:
+        return result
+
+    reasons: list[str] = []
+    if result.signal == "NO TRADE":
+        reasons.append("Ana kurulum yok")
+    if result.quality != "A":
+        reasons.append("Kalite A degil")
+    if result.setup_score < 85:
+        reasons.append("Setup score 85 alti")
+    if result.rr_ratio < 2.2:
+        reasons.append("R/R 2.2 alti")
+    if result.sweep_signal == "Yok":
+        reasons.append("Sweep onayi yok")
+    if result.sniper_entry == "Yok":
+        reasons.append("Sniper onayi yok")
+    if events:
+        reasons.append("Yuksek etkili haber riski")
+
+    if not reasons:
+        return result
+
+    merged_reasons = list(dict.fromkeys(result.no_trade_reasons + reasons))
+    gated_reason = "ULTRA_SELECTIVE filtre: " + " | ".join(merged_reasons)
+    return AnalysisResult(
+        symbol=result.symbol,
+        trend=result.trend,
+        higher_tf_trend=result.higher_tf_trend,
+        current_price=result.current_price,
+        support=result.support,
+        resistance=result.resistance,
+        entry_zone=result.entry_zone,
+        stop_loss=result.stop_loss,
+        take_profit=result.take_profit,
+        take_profit_2=result.take_profit_2,
+        rr_ratio=result.rr_ratio,
+        signal="NO TRADE",
+        timeframe=result.timeframe,
+        reason=gated_reason,
+        atr=result.atr,
+        rsi=result.rsi,
+        setup_score=result.setup_score,
+        quality=result.quality,
+        sweep_signal=result.sweep_signal,
+        sniper_entry=result.sniper_entry,
+        no_trade_reasons=merged_reasons,
+    )
+
+
 def log_signal(
     *,
     source: str,
@@ -192,6 +250,7 @@ async def signal(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             return
 
         result, events = await build_signal_result(symbol, timeframe)
+        result = _apply_ultra_selective_gate(result, events)
         log_signal(
             source="manual_signal",
             chat_id=update.effective_chat.id if update.effective_chat else None,
@@ -271,6 +330,7 @@ async def plan(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
         symbol, timeframe = parse_symbol_and_tf(context.args)
         result, events = await build_signal_result(symbol, timeframe)
+        result = _apply_ultra_selective_gate(result, events)
         plan_text = (
             f"{format_signal(result, events)}\n"
             "<b>Gunluk plan</b>\n"
@@ -427,6 +487,10 @@ async def alert_scan_job(context: CallbackContext) -> None:
     min_quality = repo.get_setting("min_quality_for_alert", "A")
     min_score = int(repo.get_setting("min_score_for_alert", "80"))
     min_rr = float(repo.get_setting("min_rr_for_alert", "2.0"))
+    if settings.ultra_selective_mode:
+        min_quality = "A"
+        min_score = max(min_score, 85)
+        min_rr = max(min_rr, 2.2)
 
     for chat_id_str, items in repo.iter_all_watches().items():
         chat_id = int(chat_id_str)
@@ -451,6 +515,7 @@ async def alert_scan_job(context: CallbackContext) -> None:
                     higher_tf_df=higher_df,
                     high_impact_events=events,
                 )
+                result = _apply_ultra_selective_gate(result, events)
                 log_signal(
                     source="auto_alert_scan",
                     chat_id=chat_id,
@@ -465,7 +530,7 @@ async def alert_scan_job(context: CallbackContext) -> None:
 
                 if (
                     result.signal != "NO TRADE"
-                    and result.quality == min_quality
+                    and quality_meets_min(result.quality, min_quality)
                     and result.setup_score >= min_score
                     and result.rr_ratio >= min_rr
                     and (near_support or near_resistance)
@@ -517,6 +582,7 @@ async def daily_plan_job(context: CallbackContext) -> None:
                     higher_tf_df=higher_df,
                     high_impact_events=events,
                 )
+                result = _apply_ultra_selective_gate(result, events)
                 log_signal(
                     source="daily_plan",
                     chat_id=chat_id,
@@ -544,7 +610,9 @@ def build_application() -> Application:
     if not settings.telegram_bot_token:
         raise RuntimeError("TELEGRAM_BOT_TOKEN eksik.")
 
-    application = Application.builder().token(settings.telegram_bot_token).build()
+    tzinfo = ZoneInfo(settings.default_timezone)
+    defaults = Defaults(tzinfo=tzinfo)
+    application = Application.builder().token(settings.telegram_bot_token).defaults(defaults).build()
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", start))
     application.add_handler(CommandHandler("signal", signal))
@@ -571,8 +639,9 @@ def build_application() -> Application:
         interval=settings.alert_scan_minutes * 60,
         first=20,
     )
+    daily_time = time(hour=settings.daily_plan_hour, minute=0, tzinfo=tzinfo)
     application.job_queue.run_daily(
         daily_plan_job,
-        time=datetime.strptime(f"{settings.daily_plan_hour:02d}:00", "%H:%M").time(),
+        time=daily_time,
     )
     return application

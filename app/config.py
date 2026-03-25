@@ -22,6 +22,10 @@ class Settings:
     db_path: str = os.getenv("DB_PATH", "data/bot.db")
     web_host: str = os.getenv("WEB_HOST", "127.0.0.1")
     web_port: int = int(os.getenv("WEB_PORT", "8080"))
+    ultra_selective_mode: bool = os.getenv("ULTRA_SELECTIVE_MODE", "1").strip().lower() in {"1", "true", "yes", "on"}
+    web_auth_enabled: bool = os.getenv("WEB_AUTH_ENABLED", "1").strip().lower() in {"1", "true", "yes", "on"}
+    web_admin_user: str = os.getenv("WEB_ADMIN_USER", "admin")
+    web_admin_password: str = os.getenv("WEB_ADMIN_PASSWORD", "change_me_now")
 
 
 settings = Settings()

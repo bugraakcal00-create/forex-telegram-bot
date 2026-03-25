@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from pathlib import Path
+from secrets import compare_digest
 
-from fastapi import FastAPI, Form, Request
+from fastapi import Depends, FastAPI, Form, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.templating import Jinja2Templates
 
 from app.config import settings
@@ -12,8 +14,26 @@ from app.storage.sqlite_store import BotRepository
 BASE_DIR = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 repo = BotRepository(db_path=Path(settings.db_path))
+security = HTTPBasic()
 
-app = FastAPI(title="Forex Bot Local Panel")
+
+def require_auth(credentials: HTTPBasicCredentials = Depends(security)) -> None:
+    if not settings.web_auth_enabled:
+        return
+
+    valid_user = compare_digest(credentials.username, settings.web_admin_user)
+    valid_password = compare_digest(credentials.password, settings.web_admin_password)
+    if valid_user and valid_password:
+        return
+
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Unauthorized",
+        headers={"WWW-Authenticate": "Basic"},
+    )
+
+
+app = FastAPI(title="Forex Bot Local Panel", dependencies=[Depends(require_auth)])
 
 
 @app.get("/")
