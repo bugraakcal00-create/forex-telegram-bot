@@ -1,200 +1,427 @@
 <!doctype html>
-<html lang="en">
+<html lang="tr">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Forex Bot Local Panel</title>
+  <title>Forex Bot Kontrol Merkezi</title>
   <style>
     :root {
-      --bg: #f6f7fb;
-      --card: #ffffff;
-      --text: #1d2635;
-      --muted: #5e6b82;
-      --accent: #007a5a;
-      --border: #d9e0ea;
+      --bg-1: #f4f7ff;
+      --bg-2: #eefcf7;
+      --panel: #ffffffcc;
+      --ink: #172030;
+      --muted: #58657a;
+      --line: #d8e1ee;
+      --green: #0f7b58;
+      --orange: #ce7a12;
+      --rose: #c0325c;
+      --blue: #2463eb;
+      --shadow: 0 12px 30px rgba(22, 38, 68, 0.08);
     }
+    * { box-sizing: border-box; }
     body {
       margin: 0;
-      font-family: Segoe UI, Arial, sans-serif;
-      background: linear-gradient(180deg, #f6f7fb 0%, #eef3ff 100%);
-      color: var(--text);
+      color: var(--ink);
+      font-family: "Space Grotesk", "Sora", "Trebuchet MS", sans-serif;
+      background:
+        radial-gradient(80rem 40rem at -20% -10%, #dce7ff 0%, transparent 60%),
+        radial-gradient(70rem 35rem at 120% -10%, #d5f8e7 0%, transparent 60%),
+        linear-gradient(180deg, var(--bg-1) 0%, var(--bg-2) 100%);
+      min-height: 100vh;
     }
-    .wrap {
-      max-width: 1200px;
-      margin: 24px auto;
-      padding: 0 16px;
-    }
-    .grid {
+    .page {
+      width: min(1300px, 96vw);
+      margin: 20px auto 32px;
       display: grid;
       gap: 14px;
-      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    }
+    .hero {
+      background: linear-gradient(125deg, #0d1624 0%, #163044 48%, #0f7b58 100%);
+      color: #eff7ff;
+      border-radius: 18px;
+      padding: 18px;
+      box-shadow: var(--shadow);
+      animation: rise .5s ease;
+    }
+    .hero p { margin: 6px 0 0; opacity: .85; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 14px;
     }
     .card {
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 14px;
+      background: var(--panel);
+      backdrop-filter: blur(8px);
+      border: 1px solid var(--line);
+      border-radius: 16px;
       padding: 14px;
-      box-shadow: 0 8px 24px rgba(28, 39, 66, 0.06);
+      box-shadow: var(--shadow);
+      animation: rise .35s ease;
     }
-    h1, h2, h3 { margin-top: 0; }
-    p { color: var(--muted); }
+    .span-3 { grid-column: span 3; }
+    .span-4 { grid-column: span 4; }
+    .span-5 { grid-column: span 5; }
+    .span-6 { grid-column: span 6; }
+    .span-7 { grid-column: span 7; }
+    .span-8 { grid-column: span 8; }
+    .span-12 { grid-column: span 12; }
+    @media (max-width: 980px) {
+      .span-3, .span-4, .span-5, .span-6, .span-7, .span-8 { grid-column: span 12; }
+    }
+    h1, h2, h3 { margin: 0; }
+    .card h3 { margin-bottom: 10px; }
+    .kpi-value {
+      font-size: 1.7rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-top: 6px;
+    }
+    .muted { color: var(--muted); font-size: .92rem; }
+    .pill {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-size: .78rem;
+      font-weight: 700;
+      letter-spacing: .02em;
+    }
+    .ok { background: #daf6eb; color: #0a6f4f; }
+    .warn { background: #ffeccf; color: #9f5e00; }
+    .bad { background: #ffe0e8; color: #a9254b; }
+    .controls { display: grid; gap: 8px; }
     input, select, button {
       width: 100%;
-      margin: 6px 0;
       padding: 10px;
-      border: 1px solid var(--border);
       border-radius: 10px;
-      box-sizing: border-box;
+      border: 1px solid var(--line);
+      font: inherit;
+      background: #fff;
     }
     button {
-      background: var(--accent);
-      color: #fff;
       border: none;
+      color: #fff;
+      background: linear-gradient(115deg, #0f7b58, #2463eb);
+      font-weight: 700;
       cursor: pointer;
-      font-weight: 600;
     }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 13px;
+    button.alt { background: linear-gradient(115deg, #6a7383, #8a94a6); }
+    .split { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+    @media (max-width: 980px) { .split { grid-template-columns: 1fr; } }
+    .chart {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+      padding: 8px;
+      min-height: 220px;
     }
-    th, td {
-      border-bottom: 1px solid #e8edf5;
-      text-align: left;
-      padding: 8px 4px;
+    .table-wrap {
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
     }
-    .small { font-size: 12px; color: var(--muted); }
+    table { width: 100%; border-collapse: collapse; font-size: .86rem; }
+    th, td { text-align: left; padding: 8px; border-bottom: 1px solid #edf1f7; white-space: nowrap; }
+    th { background: #f8fbff; position: sticky; top: 0; }
+    .bar {
+      height: 8px;
+      background: #edf2fb;
+      border-radius: 999px;
+      overflow: hidden;
+      margin-top: 8px;
+    }
+    .bar > span { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #0f7b58, #2463eb); }
+    @keyframes rise {
+      from { opacity: .4; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <h1>Forex Bot Local Panel</h1>
-    <p>Bot metrikleri, watchlist yonetimi ve runtime ayarlar.</p>
-
-    <div class="grid">
-      <section class="card">
-        <h3>Ozet</h3>
-        <p>Total Trades: {{ summary.total_trades }}</p>
-        <p>Win / Loss: {{ summary.wins }} / {{ summary.losses }}</p>
-        <p>Winrate: %{{ summary.winrate }}</p>
-        <p>Net RR: {{ summary.net_rr }}</p>
-        <p>Total Signals: {{ summary.total_signals }}</p>
-        <p>No Trade Rate: %{{ summary.no_trade_rate }}</p>
-      </section>
-
-      <section class="card">
-        <h3>Session Filter</h3>
-        <form method="post" action="/settings/session-filter">
-          <select name="enabled">
-            <option value="1" {% if settings.get("session_filter_enabled", "1") == "1" %}selected{% endif %}>Acik</option>
-            <option value="0" {% if settings.get("session_filter_enabled", "1") == "0" %}selected{% endif %}>Kapali</option>
-          </select>
-          <button type="submit">Kaydet</button>
-        </form>
-        <p class="small">London + New York disi sinyal/alerti keser.</p>
-      </section>
-
-      <section class="card">
-        <h3>Alert Esikleri</h3>
-        <form method="post" action="/settings/alerts">
-          <label>Min Quality</label>
-          <select name="min_quality">
-            <option value="A" {% if settings.get("min_quality_for_alert", "A") == "A" %}selected{% endif %}>A</option>
-            <option value="B" {% if settings.get("min_quality_for_alert", "A") == "B" %}selected{% endif %}>B</option>
-            <option value="C" {% if settings.get("min_quality_for_alert", "A") == "C" %}selected{% endif %}>C</option>
-          </select>
-          <label>Min Score</label>
-          <input type="number" name="min_score" value="{{ settings.get('min_score_for_alert', '80') }}" min="1" max="100" />
-          <label>Min RR</label>
-          <input type="number" name="min_rr" value="{{ settings.get('min_rr_for_alert', '2.0') }}" step="0.1" min="0.1" />
-          <button type="submit">Guncelle</button>
-        </form>
-      </section>
-
-      <section class="card">
-        <h3>Watch Ekle</h3>
-        <form method="post" action="/watch/add">
-          <input name="chat_id" type="number" placeholder="chat id" required />
-          <input name="symbol" type="text" placeholder="XAUUSD" required />
-          <input name="timeframe" type="text" placeholder="5min" required />
-          <button type="submit">Ekle</button>
-        </form>
-      </section>
-
-      <section class="card">
-        <h3>Watch Sil</h3>
-        <form method="post" action="/watch/remove">
-          <input name="chat_id" type="number" placeholder="chat id" required />
-          <input name="symbol" type="text" placeholder="XAUUSD" required />
-          <input name="timeframe" type="text" placeholder="opsiyonel timeframe" />
-          <button type="submit">Sil</button>
-        </form>
-      </section>
-
-      <section class="card">
-        <h3>Trade Ekle</h3>
-        <form method="post" action="/trade/add">
-          <input name="chat_id" type="number" placeholder="chat id" required />
-          <input name="symbol" type="text" placeholder="XAUUSD" required />
-          <input name="timeframe" type="text" placeholder="5min" required />
-          <select name="result">
-            <option value="win">win</option>
-            <option value="loss">loss</option>
-          </select>
-          <input name="rr" type="number" step="0.1" placeholder="2.0 / -1.0" required />
-          <button type="submit">Kaydet</button>
-        </form>
-      </section>
-    </div>
-
-    <section class="card" style="margin-top: 14px;">
-      <h3>Watchlist Gruplari</h3>
-      <table>
-        <thead>
-          <tr><th>Chat ID</th><th>Items</th></tr>
-        </thead>
-        <tbody>
-        {% for chat_id, items in watch_groups.items() %}
-          <tr>
-            <td>{{ chat_id }}</td>
-            <td>
-              {% for item in items %}
-                {{ item.symbol }} {{ item.timeframe }}{% if not loop.last %}, {% endif %}
-              {% endfor %}
-            </td>
-          </tr>
-        {% endfor %}
-        </tbody>
-      </table>
-      <p class="small">Daily subscribers: {{ daily_subscribers|length }}</p>
+  <div class="page">
+    <section class="hero">
+      <h1>Forex Bot Kontrol Merkezi</h1>
+      <p>Canli izleme, risk ayarlari ve alarm kontrol paneli</p>
     </section>
 
-    <section class="card" style="margin-top: 14px;">
-      <h3>Recent Signals</h3>
-      <table>
-        <thead>
-          <tr>
-            <th>ID</th><th>Time</th><th>Source</th><th>Symbol</th><th>TF</th><th>Signal</th><th>Q</th><th>Score</th><th>RR</th><th>Session</th>
-          </tr>
-        </thead>
-        <tbody>
-        {% for row in recent_signals %}
-          <tr>
-            <td>{{ row.id }}</td>
-            <td>{{ row.created_at }}</td>
-            <td>{{ row.source }}</td>
-            <td>{{ row.symbol }}</td>
-            <td>{{ row.timeframe }}</td>
-            <td>{{ row.signal }}</td>
-            <td>{{ row.quality }}</td>
-            <td>{{ row.setup_score }}</td>
-            <td>{{ row.rr_ratio }}</td>
-            <td>{{ row.session_name }}</td>
-          </tr>
-        {% endfor %}
-        </tbody>
-      </table>
+    <section class="grid">
+      <article class="card span-3">
+        <h3>Toplam Islem</h3>
+        <div class="kpi-value">{{ summary.total_trades }}</div>
+        <div class="muted">Win/Loss: {{ summary.wins }} / {{ summary.losses }}</div>
+      </article>
+      <article class="card span-3">
+        <h3>Kazanma Orani</h3>
+        <div class="kpi-value">%{{ summary.winrate }}</div>
+        <div class="bar"><span style="width: {{ summary.winrate }}%"></span></div>
+      </article>
+      <article class="card span-3">
+        <h3>Net RR</h3>
+        <div class="kpi-value">{{ summary.net_rr }}</div>
+        <div class="muted">Toplam performans katsayisi</div>
+      </article>
+      <article class="card span-3">
+        <h3>Islem Yok Orani</h3>
+        <div class="kpi-value">%{{ summary.no_trade_rate }}</div>
+        <div class="muted">{{ summary.no_trade_count }} / {{ summary.total_signals }} sinyal</div>
+      </article>
+
+      <article class="card span-5">
+        <h3>Seans ve Alarm Ayarlari</h3>
+        <div class="controls">
+          <form method="post" action="/settings/session-filter">
+            <label class="muted">Seans Filtresi</label>
+            <select name="enabled">
+              <option value="1" {% if settings.get("session_filter_enabled", "1") == "1" %}selected{% endif %}>Acik</option>
+              <option value="0" {% if settings.get("session_filter_enabled", "1") == "0" %}selected{% endif %}>Kapali</option>
+            </select>
+            <button type="submit">Kaydet</button>
+          </form>
+          <form method="post" action="/settings/alerts">
+            <div class="split">
+              <div>
+                <label class="muted">Minimum Kalite</label>
+                <select name="min_quality">
+                  <option value="A" {% if settings.get("min_quality_for_alert", "A") == "A" %}selected{% endif %}>A</option>
+                  <option value="B" {% if settings.get("min_quality_for_alert", "A") == "B" %}selected{% endif %}>B</option>
+                  <option value="C" {% if settings.get("min_quality_for_alert", "A") == "C" %}selected{% endif %}>C</option>
+                </select>
+              </div>
+              <div>
+                <label class="muted">Minimum Skor</label>
+                <input type="number" name="min_score" value="{{ settings.get('min_score_for_alert', '80') }}" min="1" max="100" />
+              </div>
+              <div>
+                <label class="muted">Minimum RR</label>
+                <input type="number" name="min_rr" value="{{ settings.get('min_rr_for_alert', '2.0') }}" min="0.1" step="0.1" />
+              </div>
+            </div>
+            <button type="submit">Alarm Ayarlarini Guncelle</button>
+          </form>
+        </div>
+      </article>
+
+      <article class="card span-3">
+        <h3>Hazir Mod</h3>
+        <div class="controls">
+          <form method="post" action="/settings/preset">
+            <input type="hidden" name="mode" value="conservative" />
+            <button type="submit">Koruyucu</button>
+          </form>
+          <form method="post" action="/settings/preset">
+            <input type="hidden" name="mode" value="balanced" />
+            <button type="submit">Dengeli</button>
+          </form>
+          <form method="post" action="/settings/preset">
+            <input type="hidden" name="mode" value="aggressive" />
+            <button class="alt" type="submit">Agresif</button>
+          </form>
+        </div>
+      </article>
+
+      <article class="card span-4">
+        <h3>Izleme Yonetimi</h3>
+        <div class="controls">
+          <form method="post" action="/watch/add">
+            <input type="number" name="chat_id" placeholder="chat id" required />
+            <input type="text" name="symbol" placeholder="XAUUSD" required />
+            <input type="text" name="timeframe" placeholder="5min" required />
+            <button type="submit">Izleme Ekle</button>
+          </form>
+          <form method="post" action="/watch/remove">
+            <input type="number" name="chat_id" placeholder="chat id" required />
+            <input type="text" name="symbol" placeholder="XAUUSD" required />
+            <input type="text" name="timeframe" placeholder="opsiyonel timeframe" />
+            <button class="alt" type="submit">Izleme Sil</button>
+          </form>
+        </div>
+      </article>
+
+      <article class="card span-7">
+        <h3>14 Gunluk Islem Egri Grafigi</h3>
+        <div class="chart"><canvas id="tradeChart" width="900" height="220"></canvas></div>
+      </article>
+
+      <article class="card span-5">
+        <h3>Sinyal Kalite Dagilimi</h3>
+        <div class="chart"><canvas id="qualityChart" width="500" height="220"></canvas></div>
+      </article>
+
+      <article class="card span-4">
+        <h3>En Cok Islem Goren Semboller</h3>
+        {% if top_symbols %}
+          {% for row in top_symbols %}
+            <p>
+              <strong>{{ row.symbol }}</strong>
+              <span class="pill {% if row.avg_rr >= 1 %}ok{% elif row.avg_rr >= 0 %}warn{% else %}bad{% endif %}">
+                ort RR {{ row.avg_rr }}
+              </span>
+              <br><span class="muted">{{ row.total }} islem</span>
+            </p>
+          {% endfor %}
+        {% else %}
+          <p class="muted">Henuz islem kaydi yok.</p>
+        {% endif %}
+      </article>
+
+      <article class="card span-4">
+        <h3>Haftalik Ozet (7 gun)</h3>
+        <p><strong>Toplam Islem:</strong> {{ weekly_report.total_trades }}</p>
+        <p><strong>Kazanc/Zarar:</strong> {{ weekly_report.wins }} / {{ weekly_report.losses }}</p>
+        <p><strong>Kazanma Orani:</strong> %{{ weekly_report.winrate }}</p>
+        <p><strong>Net RR:</strong> {{ weekly_report.net_rr }}</p>
+        <p><strong>TP / SL / Bekleyen:</strong> {{ weekly_report.tp_hit }} / {{ weekly_report.sl_hit }} / {{ weekly_report.pending }}</p>
+      </article>
+
+      <article class="card span-8">
+        <h3>Neden Elendi Skor Karti</h3>
+        {% if reason_dist %}
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Neden</th><th>Tekrar</th></tr></thead>
+              <tbody>
+              {% for item in reason_dist %}
+                <tr>
+                  <td>{{ item.reason }}</td>
+                  <td>{{ item.count }}</td>
+                </tr>
+              {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <p class="muted">Henuz neden verisi yok.</p>
+        {% endif %}
+      </article>
+
+      <article class="card span-8">
+        <h3>Izleme Listesi Gruplari</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Sohbet ID</th><th>Ogeler</th></tr></thead>
+            <tbody>
+            {% for chat_id, items in watch_groups.items() %}
+              <tr>
+                <td>{{ chat_id }}</td>
+                <td>
+                  {% for item in items %}
+                    {{ item.symbol }} {{ item.timeframe }}{% if not loop.last %}, {% endif %}
+                  {% endfor %}
+                </td>
+              </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <p class="muted">Gunluk abone sayisi: {{ daily_subscribers|length }}</p>
+      </article>
+
+      <article class="card span-12">
+        <h3>Son Sinyaller</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th><th>Zaman</th><th>Kaynak</th><th>Sembol</th><th>TF</th><th>Sinyal</th><th>Kalite</th><th>Skor</th><th>RR</th><th>Seans</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in recent_signals %}
+              <tr>
+                <td>{{ row.id }}</td>
+                <td>{{ row.created_at }}</td>
+                <td>{{ row.source }}</td>
+                <td>{{ row.symbol }}</td>
+                <td>{{ row.timeframe }}</td>
+                <td>{{ row.signal }}</td>
+                <td>{{ row.quality }}</td>
+                <td>{{ row.setup_score }}</td>
+                <td>{{ row.rr_ratio }}</td>
+                <td>{{ row.session_name }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </article>
     </section>
   </div>
+
+  <script>
+    const tradeSeries = {{ trade_series | tojson }};
+    const qualityDist = {{ quality_dist | tojson }};
+
+    function drawTradeChart() {
+      const canvas = document.getElementById("tradeChart");
+      if (!canvas || !tradeSeries.length) return;
+      const ctx = canvas.getContext("2d");
+      const w = canvas.width, h = canvas.height;
+      ctx.clearRect(0, 0, w, h);
+
+      const pad = 26;
+      const values = tradeSeries.map(x => x.net_rr);
+      const minV = Math.min(...values, 0);
+      const maxV = Math.max(...values, 0);
+      const span = Math.max(maxV - minV, 0.1);
+
+      function xPos(i) {
+        if (tradeSeries.length === 1) return pad;
+        return pad + i * ((w - pad * 2) / (tradeSeries.length - 1));
+      }
+      function yPos(v) { return h - pad - ((v - minV) / span) * (h - pad * 2); }
+
+      ctx.strokeStyle = "#d8e1ee";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(pad, yPos(0));
+      ctx.lineTo(w - pad, yPos(0));
+      ctx.stroke();
+
+      ctx.strokeStyle = "#2463eb";
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      tradeSeries.forEach((item, i) => {
+        const x = xPos(i), y = yPos(item.net_rr);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+
+      tradeSeries.forEach((item, i) => {
+        const x = xPos(i), y = yPos(item.net_rr);
+        ctx.fillStyle = item.net_rr >= 0 ? "#0f7b58" : "#c0325c";
+        ctx.beginPath();
+        ctx.arc(x, y, 3.5, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    }
+
+    function drawQualityChart() {
+      const canvas = document.getElementById("qualityChart");
+      if (!canvas) return;
+      const ctx = canvas.getContext("2d");
+      const w = canvas.width, h = canvas.height;
+      ctx.clearRect(0, 0, w, h);
+
+      const entries = ["A", "B", "C", "D"].map(k => ({ label: k, value: qualityDist[k] || 0 }));
+      const maxV = Math.max(1, ...entries.map(x => x.value));
+      const colors = { A: "#0f7b58", B: "#2463eb", C: "#ce7a12", D: "#c0325c" };
+      const barW = (w - 80) / entries.length;
+
+      entries.forEach((item, i) => {
+        const x = 40 + i * barW + 10;
+        const bh = (item.value / maxV) * (h - 70);
+        const y = h - 30 - bh;
+        ctx.fillStyle = colors[item.label];
+        ctx.fillRect(x, y, barW - 20, bh);
+        ctx.fillStyle = "#172030";
+        ctx.font = "12px Space Grotesk";
+        ctx.fillText(item.label, x + (barW - 28) / 2, h - 10);
+        ctx.fillText(String(item.value), x + (barW - 28) / 2, y - 6);
+      });
+    }
+
+    drawTradeChart();
+    drawQualityChart();
+  </script>
 </body>
 </html>

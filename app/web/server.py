@@ -33,7 +33,7 @@ def require_auth(credentials: HTTPBasicCredentials = Depends(security)) -> None:
     )
 
 
-app = FastAPI(title="Forex Bot Local Panel", dependencies=[Depends(require_auth)])
+app = FastAPI(title="Forex Bot Yerel Panel", dependencies=[Depends(require_auth)])
 
 
 @app.get("/")
@@ -47,6 +47,11 @@ def dashboard(request: Request) -> object:
             "recent_signals": repo.get_recent_signal_logs(limit=30),
             "watch_groups": repo.iter_all_watches(),
             "daily_subscribers": repo.get_daily_subscribers(),
+            "trade_series": repo.get_trade_series(days=14),
+            "quality_dist": repo.get_signal_quality_distribution(limit=400),
+            "top_symbols": repo.get_top_symbols(limit=6),
+            "reason_dist": repo.get_no_trade_reason_distribution(limit=350),
+            "weekly_report": repo.get_weekly_report(),
         },
     )
 
@@ -66,6 +71,24 @@ def update_alert_settings(
     repo.set_setting("min_quality_for_alert", min_quality.upper())
     repo.set_setting("min_score_for_alert", str(max(1, min(100, int(min_score)))))
     repo.set_setting("min_rr_for_alert", str(max(0.1, float(min_rr))))
+    return RedirectResponse("/", status_code=303)
+
+
+@app.post("/settings/preset")
+def apply_preset(mode: str = Form(...)) -> RedirectResponse:
+    mode = mode.strip().lower()
+    if mode == "conservative":
+        repo.set_setting("min_quality_for_alert", "A")
+        repo.set_setting("min_score_for_alert", "88")
+        repo.set_setting("min_rr_for_alert", "2.4")
+    elif mode == "balanced":
+        repo.set_setting("min_quality_for_alert", "A")
+        repo.set_setting("min_score_for_alert", "82")
+        repo.set_setting("min_rr_for_alert", "2.1")
+    elif mode == "aggressive":
+        repo.set_setting("min_quality_for_alert", "B")
+        repo.set_setting("min_score_for_alert", "72")
+        repo.set_setting("min_rr_for_alert", "1.8")
     return RedirectResponse("/", status_code=303)
 
 

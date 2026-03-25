@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import time
+from datetime import datetime, time, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -48,6 +48,15 @@ def quality_meets_min(current_quality: str, min_quality: str) -> bool:
     return QUALITY_RANK.get(current_quality.upper(), 0) >= QUALITY_RANK.get(min_quality.upper(), 0)
 
 
+def signal_label(signal: str) -> str:
+    mapping = {
+        "LONG": "AL",
+        "SHORT": "SAT",
+        "NO TRADE": "ISLEM YOK",
+    }
+    return mapping.get(signal, signal)
+
+
 def session_text() -> str:
     status = get_session_status(settings.default_timezone)
     return (
@@ -55,8 +64,8 @@ def session_text() -> str:
         "Londra: 10:00 - 19:00\n"
         "New York: 15:30 - 24:00\n"
         f"Durum: {status.session_name}\n"
-        f"Session filtresi: {'ACIK' if session_filter_enabled() else 'KAPALI'}\n"
-        f"Ultra selective mode: {'ACIK' if settings.ultra_selective_mode else 'KAPALI'}\n"
+        f"Seans filtresi: {'ACIK' if session_filter_enabled() else 'KAPALI'}\n"
+        f"Ultra secici mod: {'ACIK' if settings.ultra_selective_mode else 'KAPALI'}\n"
         f"Sonraki acilis: {status.next_open_text}"
     )
 
@@ -76,8 +85,49 @@ def higher_timeframe_for(timeframe: str) -> str:
     return mapping.get(timeframe.lower(), "1h")
 
 
+def _parse_event_datetime(raw: str) -> datetime | None:
+    text = str(raw).strip()
+    if not text:
+        return None
+    candidates = [
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%d %H:%M",
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%d",
+    ]
+    for fmt in candidates:
+        try:
+            dt = datetime.strptime(text, fmt)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt
+        except ValueError:
+            continue
+    try:
+        dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except ValueError:
+        return None
+
+
+def news_lock_events(events: list[dict[str, str]], lock_minutes: int) -> list[dict[str, str]]:
+    now_utc = datetime.now(timezone.utc)
+    limit = now_utc + timedelta(minutes=lock_minutes)
+    locked: list[dict[str, str]] = []
+    for event in events:
+        dt = _parse_event_datetime(event.get("date", ""))
+        if dt is None:
+            continue
+        if now_utc <= dt <= limit:
+            locked.append(event)
+    return locked
+
+
 async def build_signal_result(symbol: str, timeframe: str) -> tuple[AnalysisResult, list[dict[str, str]]]:
     events = await calendar_service.get_upcoming_high_impact_events(hours_ahead=2, limit=3)
+    locked_events = news_lock_events(events, settings.news_lock_minutes)
     df = await market.fetch_candles(symbol=symbol, interval=timeframe, outputsize=300)
     higher_tf = higher_timeframe_for(timeframe)
     higher_df = await market.fetch_candles(symbol=symbol, interval=higher_tf, outputsize=300)
@@ -87,7 +137,7 @@ async def build_signal_result(symbol: str, timeframe: str) -> tuple[AnalysisResu
         df=df,
         timeframe=timeframe,
         higher_tf_df=higher_df,
-        high_impact_events=events,
+        high_impact_events=locked_events,
     )
     return result, events
 
@@ -98,13 +148,15 @@ def format_signal(result: AnalysisResult, events: list[dict[str, str]]) -> str:
 
     msg = (
         f"<b>{result.symbol} - {result.timeframe}</b>\n"
-        f"Sinyal: <b>{result.signal}</b>\n"
+        f"Sinyal: <b>{signal_label(result.signal)}</b>\n"
         f"Kalite: <b>{result.quality}</b>\n"
-        f"Setup Score: <b>{result.setup_score}/100</b>\n"
+        f"Kurulum skoru: <b>{result.setup_score}/100</b>\n"
         f"Ana trend: {result.trend}\n"
         f"Ust TF trend: {result.higher_tf_trend}\n"
         f"Fiyat: {result.current_price:.5f}\n"
         f"RSI: {result.rsi:.2f}\n"
+        f"Piyasa rejimi: {result.regime}\n"
+        f"Haber kilidi: {settings.news_lock_minutes} dk\n"
         f"ATR: {result.atr:.5f}\n"
         f"Destekler: {support_text}\n"
         f"Direncler: {resistance_text}\n"
@@ -114,7 +166,7 @@ def format_signal(result: AnalysisResult, events: list[dict[str, str]]) -> str:
         f"TP2: {result.take_profit_2:.5f}\n"
         f"R/R: {result.rr_ratio}\n"
         f"Sweep: {result.sweep_signal}\n"
-        f"Sniper Entry: {result.sniper_entry}\n"
+        f"Sniper giris: {result.sniper_entry}\n"
         f"Neden: {result.reason}\n"
     )
 
@@ -173,6 +225,7 @@ def _apply_ultra_selective_gate(result: AnalysisResult, events: list[dict[str, s
         reason=gated_reason,
         atr=result.atr,
         rsi=result.rsi,
+        regime=result.regime,
         setup_score=result.setup_score,
         quality=result.quality,
         sweep_signal=result.sweep_signal,
@@ -210,6 +263,9 @@ def log_signal(
         session_name=status.session_name,
         is_session_open=status.is_open,
         had_high_impact_event=bool(events),
+        entry_zone=result.entry_zone,
+        stop_loss=result.stop_loss,
+        take_profit=result.take_profit,
     )
 
 
@@ -234,7 +290,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "/logloss XAUUSD 5min -1\n"
         "/stats\n"
         "/todaystats\n"
-        "/backtest XAUUSD 5min"
+        "/backtest XAUUSD 5min\n"
+        "/weeklyreport"
     )
     await update.message.reply_text(text)
 
@@ -245,7 +302,7 @@ async def signal(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         status = get_session_status(settings.default_timezone)
         if session_filter_enabled() and not status.is_open:
             await update.message.reply_text(
-                f"Session disi. Simdi: {status.session_name}\nSonraki acilis: {status.next_open_text}"
+                f"Seans disi. Simdi: {status.session_name}\nSonraki acilis: {status.next_open_text}"
             )
             return
 
@@ -318,12 +375,12 @@ async def session_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 async def session_filter_on(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     repo.set_setting("session_filter_enabled", "1")
-    await update.message.reply_text("Session filtresi acildi.")
+    await update.message.reply_text("Seans filtresi acildi.")
 
 
 async def session_filter_off(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     repo.set_setting("session_filter_enabled", "0")
-    await update.message.reply_text("Session filtresi kapandi.")
+    await update.message.reply_text("Seans filtresi kapandi.")
 
 
 async def plan(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -462,19 +519,61 @@ async def backtest(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
         bt = backtest_service.run(symbol=symbol, timeframe=timeframe, df=df, higher_df=higher_df)
         text = (
-            f"<b>Backtest: {symbol} {timeframe}</b>\n"
-            f"Tested signals: {bt.tested_signals}\n"
-            f"Wins: {bt.wins}\n"
-            f"Losses: {bt.losses}\n"
-            f"No result: {bt.no_result}\n"
-            f"Win rate: %{bt.winrate}\n"
-            f"Avg RR: {bt.avg_rr}\n"
-            f"Expectancy: {bt.expectancy}"
+            f"<b>Geriye donuk test: {symbol} {timeframe}</b>\n"
+            f"Test edilen sinyal: {bt.tested_signals}\n"
+            f"Kazanc: {bt.wins}\n"
+            f"Zarar: {bt.losses}\n"
+            f"Sonucsuz: {bt.no_result}\n"
+            f"Kazanma orani: %{bt.winrate}\n"
+            f"Ortalama RR: {bt.avg_rr}\n"
+            f"Beklenen deger: {bt.expectancy}"
         )
         await update.message.reply_text(text, parse_mode=ParseMode.HTML)
     except Exception as exc:
         logger.exception("backtest error")
-        await update.message.reply_text(f"Backtest hatasi: {exc}")
+        await update.message.reply_text(f"Geriye donuk test hatasi: {exc}")
+
+
+async def weekly_report(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    report = repo.get_weekly_report()
+    text = (
+        "<b>Haftalik Rapor (7 gun)</b>\n"
+        f"Toplam islem: {report['total_trades']}\n"
+        f"Kazanc: {report['wins']}\n"
+        f"Zarar: {report['losses']}\n"
+        f"Kazanma orani: %{report['winrate']}\n"
+        f"Net RR: {report['net_rr']}\n"
+        f"TP ulasan sinyal: {report['tp_hit']}\n"
+        f"SL ulasan sinyal: {report['sl_hit']}\n"
+        f"Bekleyen sinyal: {report['pending']}"
+    )
+    await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+
+
+async def resolve_signal_outcomes_job(context: CallbackContext) -> None:
+    pending = repo.get_pending_signal_logs(limit=80)
+    for row in pending:
+        try:
+            signal = str(row["signal"])
+            symbol = str(row["symbol"])
+            current_price = await market.fetch_price(symbol=symbol)
+            tp = float(row["take_profit"])
+            sl = float(row["stop_loss"])
+            rr_ratio = float(row.get("rr_ratio", 0.0))
+            signal_log_id = int(row["id"])
+
+            if signal == "LONG":
+                if current_price >= tp:
+                    repo.resolve_signal_outcome(signal_log_id, "tp_hit", rr_ratio, "Fiyat TP seviyesine ulasti")
+                elif current_price <= sl:
+                    repo.resolve_signal_outcome(signal_log_id, "sl_hit", -1.0, "Fiyat SL seviyesine ulasti")
+            elif signal == "SHORT":
+                if current_price <= tp:
+                    repo.resolve_signal_outcome(signal_log_id, "tp_hit", rr_ratio, "Fiyat TP seviyesine ulasti")
+                elif current_price >= sl:
+                    repo.resolve_signal_outcome(signal_log_id, "sl_hit", -1.0, "Fiyat SL seviyesine ulasti")
+        except Exception as exc:
+            logger.warning("outcome resolve failed for id=%s: %s", row.get("id"), exc)
 
 
 async def alert_scan_job(context: CallbackContext) -> None:
@@ -513,7 +612,7 @@ async def alert_scan_job(context: CallbackContext) -> None:
                     df=df,
                     timeframe=item["timeframe"],
                     higher_tf_df=higher_df,
-                    high_impact_events=events,
+                    high_impact_events=locked_events,
                 )
                 result = _apply_ultra_selective_gate(result, events)
                 log_signal(
@@ -536,13 +635,14 @@ async def alert_scan_job(context: CallbackContext) -> None:
                     and (near_support or near_resistance)
                     and result.sweep_signal != "Yok"
                     and result.sniper_entry != "Yok"
+                    and result.regime in {"TREND", "MIXED"}
                 ):
                     text = (
                         "<b>Sniper Scalp Alarm</b>\n"
                         f"{result.symbol} {result.timeframe}\n"
-                        f"Sinyal: <b>{result.signal}</b>\n"
+                        f"Sinyal: <b>{signal_label(result.signal)}</b>\n"
                         f"Kalite: <b>{result.quality}</b>\n"
-                        f"Score: <b>{result.setup_score}/100</b>\n"
+                        f"Skor: <b>{result.setup_score}/100</b>\n"
                         f"Fiyat: {result.current_price:.5f}\n"
                         f"Giris: {result.entry_zone[0]:.5f} - {result.entry_zone[1]:.5f}\n"
                         f"SL: {result.stop_loss:.5f}\n"
@@ -564,6 +664,7 @@ async def alert_scan_job(context: CallbackContext) -> None:
 
 async def daily_plan_job(context: CallbackContext) -> None:
     events = await calendar_service.get_upcoming_high_impact_events(hours_ahead=2, limit=3)
+    locked_events = news_lock_events(events, settings.news_lock_minutes)
     for chat_id in repo.get_daily_subscribers():
         chunks: list[str] = ["<b>Gunluk forex scalp plani</b>"]
         for symbol in settings.default_pairs:
@@ -580,7 +681,7 @@ async def daily_plan_job(context: CallbackContext) -> None:
                     df=df,
                     timeframe="15min",
                     higher_tf_df=higher_df,
-                    high_impact_events=events,
+                    high_impact_events=locked_events,
                 )
                 result = _apply_ultra_selective_gate(result, events)
                 log_signal(
@@ -592,8 +693,8 @@ async def daily_plan_job(context: CallbackContext) -> None:
                     events=events,
                 )
                 chunks.append(
-                    f"\n<b>{symbol}</b> | {result.signal} | Kalite: {result.quality} | "
-                    f"Score: {result.setup_score}/100 | Fiyat: {result.current_price:.5f} | "
+                    f"\n<b>{symbol}</b> | {signal_label(result.signal)} | Kalite: {result.quality} | "
+                    f"Skor: {result.setup_score}/100 | Rejim: {result.regime} | Fiyat: {result.current_price:.5f} | "
                     f"R/R: {result.rr_ratio} | Sweep: {result.sweep_signal} | Sniper: {result.sniper_entry}"
                 )
             except Exception as exc:
@@ -633,11 +734,17 @@ def build_application() -> Application:
     application.add_handler(CommandHandler("stats", stats))
     application.add_handler(CommandHandler("todaystats", todaystats))
     application.add_handler(CommandHandler("backtest", backtest))
+    application.add_handler(CommandHandler("weeklyreport", weekly_report))
 
     application.job_queue.run_repeating(
         alert_scan_job,
         interval=settings.alert_scan_minutes * 60,
         first=20,
+    )
+    application.job_queue.run_repeating(
+        resolve_signal_outcomes_job,
+        interval=max(settings.alert_scan_minutes, 2) * 60,
+        first=35,
     )
     daily_time = time(hour=settings.daily_plan_hour, minute=0, tzinfo=tzinfo)
     application.job_queue.run_daily(

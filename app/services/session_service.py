@@ -31,19 +31,19 @@ def get_session_status(timezone_name: str) -> SessionStatus:
     in_ny = _is_between(t, ny_start, ny_end)
 
     if in_london and in_ny:
-        session_name = "London + New York Overlap"
+        session_name = "Londra + New York Kesisimi"
         is_open = True
-        next_open_text = "Session acik"
+        next_open_text = "Seans acik"
     elif in_london:
-        session_name = "London"
+        session_name = "Londra"
         is_open = True
-        next_open_text = "Session acik"
+        next_open_text = "Seans acik"
     elif in_ny:
         session_name = "New York"
         is_open = True
-        next_open_text = "Session acik"
+        next_open_text = "Seans acik"
     else:
-        session_name = "Closed"
+        session_name = "Kapali"
         is_open = False
         if t < london_start:
             next_open_text = f"Bugun {london_start.strftime('%H:%M')} ({timezone_name})"

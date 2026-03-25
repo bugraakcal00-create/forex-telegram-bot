@@ -15,6 +15,7 @@ class BotRepository:
     def __post_init__(self) -> None:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._init_db()
+        self._ensure_schema_updates()
         self._seed_defaults()
         self._migrate_json_if_needed()
 
@@ -70,6 +71,14 @@ class BotRepository:
                     session_name TEXT NOT NULL,
                     is_session_open INTEGER NOT NULL,
                     had_high_impact_event INTEGER NOT NULL,
+                    entry_low REAL,
+                    entry_high REAL,
+                    stop_loss REAL,
+                    take_profit REAL,
+                    outcome TEXT NOT NULL DEFAULT 'pending',
+                    realized_rr REAL,
+                    outcome_note TEXT,
+                    resolved_at TEXT,
                     created_at TEXT NOT NULL
                 );
 
@@ -86,6 +95,26 @@ class BotRepository:
                 ON signal_logs(created_at);
                 """
             )
+
+    def _ensure_schema_updates(self) -> None:
+        with self._connect() as conn:
+            existing = {
+                str(row["name"])
+                for row in conn.execute("PRAGMA table_info(signal_logs)").fetchall()
+            }
+            migrations = [
+                ("entry_low", "REAL"),
+                ("entry_high", "REAL"),
+                ("stop_loss", "REAL"),
+                ("take_profit", "REAL"),
+                ("outcome", "TEXT NOT NULL DEFAULT 'pending'"),
+                ("realized_rr", "REAL"),
+                ("outcome_note", "TEXT"),
+                ("resolved_at", "TEXT"),
+            ]
+            for col, ddl in migrations:
+                if col not in existing:
+                    conn.execute(f"ALTER TABLE signal_logs ADD COLUMN {col} {ddl}")
 
     def _seed_defaults(self) -> None:
         now = datetime.now().isoformat(timespec="seconds")
@@ -367,16 +396,31 @@ class BotRepository:
         session_name: str,
         is_session_open: bool,
         had_high_impact_event: bool,
-    ) -> None:
+        entry_zone: tuple[float, float] | None = None,
+        stop_loss: float | None = None,
+        take_profit: float | None = None,
+    ) -> int:
+        outcome = "pending" if signal in {"LONG", "SHORT"} else "no_trade"
+        if signal not in {"LONG", "SHORT"}:
+            realized_rr = 0.0
+            resolved_at = datetime.now().isoformat(timespec="seconds")
+            outcome_note = "Sinyal islem disi"
+        else:
+            realized_rr = None
+            resolved_at = None
+            outcome_note = None
+
         with self._connect() as conn:
-            conn.execute(
+            cursor = conn.execute(
                 """
                 INSERT INTO signal_logs (
                     chat_id, source, symbol, timeframe, signal, quality, setup_score, rr_ratio,
                     current_price, trend, higher_tf_trend, sweep_signal, sniper_entry, reason,
-                    no_trade_reasons, session_name, is_session_open, had_high_impact_event, created_at
+                    no_trade_reasons, session_name, is_session_open, had_high_impact_event,
+                    entry_low, entry_high, stop_loss, take_profit,
+                    outcome, realized_rr, outcome_note, resolved_at, created_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     chat_id,
@@ -397,9 +441,18 @@ class BotRepository:
                     session_name,
                     1 if is_session_open else 0,
                     1 if had_high_impact_event else 0,
+                    float(entry_zone[0]) if entry_zone else None,
+                    float(entry_zone[1]) if entry_zone else None,
+                    float(stop_loss) if stop_loss is not None else None,
+                    float(take_profit) if take_profit is not None else None,
+                    outcome,
+                    realized_rr,
+                    outcome_note,
+                    resolved_at,
                     datetime.now().isoformat(timespec="seconds"),
                 ),
             )
+            return int(cursor.lastrowid)
 
     def get_recent_signal_logs(self, limit: int = 50) -> list[dict[str, Any]]:
         with self._connect() as conn:
@@ -414,6 +467,37 @@ class BotRepository:
                 (limit,),
             ).fetchall()
         return [dict(row) for row in rows]
+
+    def get_pending_signal_logs(self, limit: int = 60) -> list[dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT id, symbol, timeframe, signal, rr_ratio, current_price, stop_loss, take_profit, created_at
+                FROM signal_logs
+                WHERE outcome = 'pending'
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def resolve_signal_outcome(self, signal_log_id: int, outcome: str, realized_rr: float, note: str) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                UPDATE signal_logs
+                SET outcome = ?, realized_rr = ?, outcome_note = ?, resolved_at = ?
+                WHERE id = ?
+                """,
+                (
+                    outcome,
+                    float(realized_rr),
+                    note,
+                    datetime.now().isoformat(timespec="seconds"),
+                    signal_log_id,
+                ),
+            )
 
     def get_dashboard_summary(self) -> dict[str, Any]:
         with self._connect() as conn:
@@ -456,3 +540,142 @@ class BotRepository:
             "no_trade_count": no_trade_count,
             "no_trade_rate": no_trade_rate,
         }
+
+    def get_no_trade_reason_distribution(self, limit: int = 300) -> list[dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT no_trade_reasons
+                FROM signal_logs
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+
+        counts: dict[str, int] = {}
+        for row in rows:
+            try:
+                reasons = json.loads(str(row["no_trade_reasons"]))
+            except Exception:
+                reasons = []
+            for reason in reasons:
+                key = str(reason).strip()
+                if not key:
+                    continue
+                counts[key] = counts.get(key, 0) + 1
+
+        ranked = sorted(counts.items(), key=lambda x: x[1], reverse=True)[:10]
+        return [{"reason": item[0], "count": item[1]} for item in ranked]
+
+    def get_weekly_report(self) -> dict[str, Any]:
+        with self._connect() as conn:
+            trade_row = conn.execute(
+                """
+                SELECT
+                    COUNT(*) AS total,
+                    SUM(CASE WHEN result='win' THEN 1 ELSE 0 END) AS wins,
+                    SUM(CASE WHEN result='loss' THEN 1 ELSE 0 END) AS losses,
+                    COALESCE(SUM(rr),0) AS net_rr
+                FROM trades
+                WHERE created_at >= datetime('now', '-7 day')
+                """
+            ).fetchone()
+            outcome_row = conn.execute(
+                """
+                SELECT
+                    SUM(CASE WHEN outcome='tp_hit' THEN 1 ELSE 0 END) AS tp_hit,
+                    SUM(CASE WHEN outcome='sl_hit' THEN 1 ELSE 0 END) AS sl_hit,
+                    SUM(CASE WHEN outcome='pending' THEN 1 ELSE 0 END) AS pending
+                FROM signal_logs
+                WHERE created_at >= datetime('now', '-7 day')
+                """
+            ).fetchone()
+
+        total = int(trade_row["total"] or 0)
+        wins = int(trade_row["wins"] or 0)
+        losses = int(trade_row["losses"] or 0)
+        net_rr = round(float(trade_row["net_rr"] or 0.0), 2)
+        winrate = round((wins / total) * 100, 2) if total else 0.0
+
+        return {
+            "total_trades": total,
+            "wins": wins,
+            "losses": losses,
+            "net_rr": net_rr,
+            "winrate": winrate,
+            "tp_hit": int(outcome_row["tp_hit"] or 0),
+            "sl_hit": int(outcome_row["sl_hit"] or 0),
+            "pending": int(outcome_row["pending"] or 0),
+        }
+
+    def get_trade_series(self, days: int = 14) -> list[dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT
+                    substr(created_at, 1, 10) AS day,
+                    SUM(CASE WHEN result = 'win' THEN 1 ELSE 0 END) AS wins,
+                    SUM(CASE WHEN result = 'loss' THEN 1 ELSE 0 END) AS losses,
+                    COALESCE(SUM(rr), 0) AS net_rr
+                FROM trades
+                GROUP BY substr(created_at, 1, 10)
+                ORDER BY day DESC
+                LIMIT ?
+                """,
+                (days,),
+            ).fetchall()
+
+        items = [
+            {
+                "day": str(r["day"]),
+                "wins": int(r["wins"] or 0),
+                "losses": int(r["losses"] or 0),
+                "net_rr": round(float(r["net_rr"] or 0.0), 2),
+            }
+            for r in rows
+        ]
+        return list(reversed(items))
+
+    def get_signal_quality_distribution(self, limit: int = 400) -> dict[str, int]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT quality, COUNT(*) AS count
+                FROM (
+                    SELECT quality
+                    FROM signal_logs
+                    ORDER BY id DESC
+                    LIMIT ?
+                )
+                GROUP BY quality
+                """,
+                (limit,),
+            ).fetchall()
+        base = {"A": 0, "B": 0, "C": 0, "D": 0}
+        for row in rows:
+            q = str(row["quality"]).upper()
+            if q in base:
+                base[q] = int(row["count"] or 0)
+        return base
+
+    def get_top_symbols(self, limit: int = 5) -> list[dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT symbol, COUNT(*) AS total, ROUND(AVG(rr), 2) AS avg_rr
+                FROM trades
+                GROUP BY symbol
+                ORDER BY total DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [
+            {
+                "symbol": str(r["symbol"]),
+                "total": int(r["total"] or 0),
+                "avg_rr": float(r["avg_rr"] or 0.0),
+            }
+            for r in rows
+        ]

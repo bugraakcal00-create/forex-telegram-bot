@@ -19,6 +19,7 @@ class Settings:
     )
     alert_scan_minutes: int = int(os.getenv("ALERT_SCAN_MINUTES", "5"))
     daily_plan_hour: int = int(os.getenv("DAILY_PLAN_HOUR", "8"))
+    news_lock_minutes: int = int(os.getenv("NEWS_LOCK_MINUTES", "20"))
     db_path: str = os.getenv("DB_PATH", "data/bot.db")
     web_host: str = os.getenv("WEB_HOST", "127.0.0.1")
     web_port: int = int(os.getenv("WEB_PORT", "8080"))

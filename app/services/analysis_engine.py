@@ -25,6 +25,7 @@ class AnalysisResult:
     reason: str
     atr: float
     rsi: float
+    regime: str
     setup_score: int
     quality: str
     sweep_signal: str
@@ -333,11 +334,19 @@ class AnalysisEngine:
         rr_ratio = round(reward / risk, 2) if risk else 0.0
 
         atr_ratio = atr / current_price if current_price else 0.0
+        if adx >= 23 and atr_ratio >= 0.0012:
+            regime = "TREND"
+        elif adx >= 18 and atr_ratio >= 0.0010:
+            regime = "MIXED"
+        else:
+            regime = "RANGE"
 
         if atr_ratio < 0.0012:
             no_trade_reasons.append("Scalp icin volatilite dusuk")
         if adx < 18:
             no_trade_reasons.append("Trend gucu dusuk (ADX)")
+        if regime == "RANGE":
+            no_trade_reasons.append("Piyasa rejimi range/sikisik")
         if rr_ratio < 1.8:
             no_trade_reasons.append("R/R yetersiz")
         if rsi > 65 or rsi < 35:
@@ -374,6 +383,10 @@ class AnalysisEngine:
             score += 8
         if signal == "SHORT" and 40 <= rsi <= 48:
             score += 8
+        if regime == "TREND":
+            score += 8
+        elif regime == "MIXED":
+            score += 3
         if adx >= 22:
             score += 8
         elif adx >= 18:
@@ -416,6 +429,7 @@ class AnalysisEngine:
             reason=reason,
             atr=round(atr, 5),
             rsi=round(rsi, 2),
+            regime=regime,
             setup_score=score,
             quality=quality,
             sweep_signal=sweep_signal,

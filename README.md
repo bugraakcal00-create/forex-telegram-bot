@@ -1,18 +1,19 @@
 # Forex Telegram Scalp Bot
 
-Local-first Telegram bot for XAUUSD scalp workflow.
+Bu proje, XAUUSD odakli scalp surecini Telegram uzerinden yonetmek icin gelistirilmis yerel-oncelikli bir bottur.
 
-## Core Features
-- `/signal` technical analysis with multi-timeframe checks
-- support/resistance clustering
-- ATR, RSI, ADX, RR filters
-- liquidity sweep + sniper entry detection
-- ultra selective mode for high quality setups
-- watchlist based auto alert scan
-- trade journal and stats
-- local web panel for runtime controls
+## Ana Ozellikler
+- `/signal` ile teknik analiz
+- coklu zaman dilimi kontrolu
+- destek/direnc kumeleme
+- ATR, RSI, ADX, RR filtreleri
+- likidite sweep + sniper giris tespiti
+- ultra secici mod
+- izleme listesi ile otomatik alarm tarama
+- islem gunlugu ve performans istatistikleri
+- yerel web panel ile canli yonetim
 
-## Tech Stack
+## Teknolojiler
 - Python 3.11+
 - python-telegram-bot
 - httpx
@@ -20,15 +21,15 @@ Local-first Telegram bot for XAUUSD scalp workflow.
 - FastAPI + Jinja2
 - SQLite
 
-## Project Structure
-- `main.py`: Telegram bot entrypoint
-- `web_main.py`: local web panel entrypoint
-- `app/bot.py`: handlers, jobs, signal orchestration
-- `app/services/*`: analysis and external API clients
-- `app/storage/sqlite_store.py`: persistence layer
-- `app/web/*`: local management panel
+## Proje Yapisi
+- `main.py`: Telegram bot giris noktasi
+- `web_main.py`: yerel web panel giris noktasi
+- `app/bot.py`: komutlar, job'lar, sinyal akisi
+- `app/services/*`: analiz ve dis API istemcileri
+- `app/storage/sqlite_store.py`: kalicilik katmani
+- `app/web/*`: yerel yonetim paneli
 
-## Setup
+## Kurulum
 ```bash
 python -m venv .venv
 .venv\Scripts\activate
@@ -36,7 +37,7 @@ pip install -r requirements.txt
 copy .env.example .env
 ```
 
-Fill `.env` with your secrets:
+`.env` dosyasini doldur:
 ```env
 TELEGRAM_BOT_TOKEN=...
 TWELVEDATA_API_KEY=...
@@ -46,6 +47,7 @@ DEFAULT_TIMEZONE=Europe/Istanbul
 DEFAULT_PAIRS=XAU/USD
 ALERT_SCAN_MINUTES=15
 DAILY_PLAN_HOUR=8
+NEWS_LOCK_MINUTES=20
 DB_PATH=data/bot.db
 WEB_HOST=127.0.0.1
 WEB_PORT=8080
@@ -55,21 +57,21 @@ WEB_ADMIN_USER=admin
 WEB_ADMIN_PASSWORD=change_me_now
 ```
 
-## Run
-Telegram bot:
+## Calistirma
+Bot:
 ```bash
 python main.py
 ```
 
-Local web panel:
+Web panel:
 ```bash
 python web_main.py
 ```
 
-Open:
+Tarayici:
 `http://127.0.0.1:8080`
 
-## Telegram Commands
+## Telegram Komutlari
 - `/start`
 - `/signal XAUUSD 5min`
 - `/levels XAUUSD 15min`
@@ -89,8 +91,9 @@ Open:
 - `/stats`
 - `/todaystats`
 - `/backtest XAUUSD 5min`
+- `/weeklyreport`
 
-## Notes
-- Do not run local bot and hosted bot at the same time (polling conflict).
-- SQLite file is local. If deployed to ephemeral filesystem, data may reset.
-- This bot is an assistant tool, not profit guarantee.
+## Notlar
+- Yerel ve host edilen botu ayni anda calistirma (polling cakismasi olur).
+- SQLite yerel dosyadir. Gecici dosya sisteminde veri sifirlanabilir.
+- Bot yatirim garantisi vermez; karar destek aracidir.
