@@ -1208,20 +1208,15 @@ async def alert_scan_job(context: CallbackContext) -> None:
         logger.info("alert scan skipped: session closed (%s)", status.session_name)
         return
 
-    # ICT Killzone filtresi: sadece yüksek olasılıklı zaman dilimlerinde işlem
-    if session_filter_enabled() and not status.in_killzone:
-        logger.info("alert scan skipped: not in ICT killzone (current: %s)", status.session_name)
-        return
+    # Killzone filtresi KALDIRILDI — optimizer zaten en iyi strateji/TF'yi seçti
+    # Seans açıksa tarama yapılır
 
     events = await calendar_service.get_upcoming_high_impact_events(hours_ahead=2, limit=3)
     locked_events = news_lock_events(events, settings.news_lock_minutes)
-    min_quality = repo.get_setting("min_quality_for_alert", "A")
-    min_score = int(repo.get_setting("min_score_for_alert", "80"))
-    min_rr = float(repo.get_setting("min_rr_for_alert", "2.0"))
-    if settings.ultra_selective_mode:
-        min_quality = "A"
-        min_score = max(min_score, 85)
-        min_rr = max(min_rr, 2.2)
+    # Optimizer zaten WR>=50% filtreledi, burada min_score/min_rr gevşetildi
+    min_quality = "C"      # Optimizer stratejileri zaten kaliteli
+    min_score = 45         # analysis_engine'deki min_score_for_signal ile aynı
+    min_rr = 1.0           # Profil bazlı min_rr yeterli
 
     # DXY, COT ve sentiment bias'larını tek seferde çek (tüm semboller için paylaş)
     import asyncio as _asyncio2
