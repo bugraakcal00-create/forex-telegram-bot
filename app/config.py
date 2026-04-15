@@ -21,6 +21,8 @@ class Settings:
     daily_plan_hour: int = int(os.getenv("DAILY_PLAN_HOUR", "8"))
     news_lock_minutes: int = int(os.getenv("NEWS_LOCK_MINUTES", "20"))
     db_path: str = os.getenv("DB_PATH", "data/bot.db")
+    candle_output_size: int = int(os.getenv("CANDLE_OUTPUT_SIZE", "500"))
+    backtest_output_size: int = int(os.getenv("BACKTEST_OUTPUT_SIZE", "2000"))
     web_host: str = os.getenv("WEB_HOST", "127.0.0.1")
     web_port: int = int(os.getenv("WEB_PORT", "8080"))
     ultra_selective_mode: bool = os.getenv("ULTRA_SELECTIVE_MODE", "1").strip().lower() in {"1", "true", "yes", "on"}

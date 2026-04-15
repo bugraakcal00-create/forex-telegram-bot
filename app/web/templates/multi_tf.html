@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Multi-TF{% endblock %}
+{% block nav_multitf %}active{% endblock %}
+{% block page_title %}Multi-Timeframe Analiz — {{ selected_symbol }}{% endblock %}
+
+{% block content %}
+<!-- Symbol secimi -->
+<div class="card" style="padding:16px;margin-bottom:20px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+  <label style="font-size:12px;color:var(--muted2);font-weight:600">Sembol:</label>
+  {% for s in symbols %}
+    <a href="/multi-tf?symbol={{ s }}"
+       style="padding:6px 16px;border-radius:8px;font-size:12px;font-weight:600;text-decoration:none;
+              {% if s == selected_symbol %}background:linear-gradient(135deg,var(--blue),var(--purple));color:#fff{% else %}background:var(--bg);color:var(--text2);border:1px solid var(--border){% endif %}">
+      {{ s }}
+    </a>
+  {% endfor %}
+</div>
+
+<!-- 2x2 Grid -->
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(480px,1fr));gap:16px">
+  {% for tf_data in analyses %}
+  <div class="card" style="padding:16px;position:relative">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h3 style="font-size:14px;font-weight:700">{{ tf_data.timeframe }}</h3>
+      {% if tf_data.error %}
+        <span style="background:var(--red-d);color:var(--red);padding:3px 10px;border-radius:8px;font-size:10px">HATA</span>
+      {% elif tf_data.result %}
+        {% set r = tf_data.result %}
+        <span style="background:{% if r.signal == 'LONG' %}var(--green-d);color:var(--green){% elif r.signal == 'SHORT' %}var(--red-d);color:var(--red){% else %}rgba(100,116,139,.15);color:var(--muted2){% endif %};padding:3px 10px;border-radius:8px;font-size:11px;font-weight:700">
+          {{ r.signal }}
+        </span>
+      {% endif %}
+    </div>
+
+    {% if tf_data.error %}
+      <p style="color:var(--red);font-size:12px">{{ tf_data.error }}</p>
+    {% elif tf_data.result %}
+      {% set r = tf_data.result %}
+      <!-- Mini Stats -->
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px">
+        <div style="text-align:center">
+          <div style="font-size:10px;color:var(--muted)">Kalite</div>
+          <div style="font-size:16px;font-weight:700;color:{% if r.quality == 'A' %}var(--green){% elif r.quality == 'B' %}var(--blue){% elif r.quality == 'C' %}var(--gold){% else %}var(--muted){% endif %}">{{ r.quality }}</div>
+        </div>
+        <div style="text-align:center">
+          <div style="font-size:10px;color:var(--muted)">Skor</div>
+          <div style="font-size:16px;font-weight:700">{{ r.setup_score }}</div>
+        </div>
+        <div style="text-align:center">
+          <div style="font-size:10px;color:var(--muted)">R/R</div>
+          <div style="font-size:16px;font-weight:700;color:{% if r.rr_ratio >= 2 %}var(--green){% else %}var(--gold){% endif %}">{{ "%.1f"|format(r.rr_ratio) }}</div>
+        </div>
+        <div style="text-align:center">
+          <div style="font-size:10px;color:var(--muted)">Trend</div>
+          <div style="font-size:12px;font-weight:600;color:{% if r.trend == 'YUKARI' %}var(--green){% elif r.trend == 'ASAGI' %}var(--red){% else %}var(--muted2){% endif %}">{{ r.trend }}</div>
+        </div>
+      </div>
+
+      <!-- Chart -->
+      {% if tf_data.chart_b64 %}
+        <img src="data:image/png;base64,{{ tf_data.chart_b64 }}" style="width:100%;border-radius:8px" alt="{{ tf_data.timeframe }} chart"/>
+      {% endif %}
+
+      <!-- Key Info -->
+      <div style="margin-top:10px;font-size:11px;color:var(--text2);line-height:1.8">
+        {% if r.signal in ('LONG', 'SHORT') %}
+          <div><span style="color:var(--muted)">Entry:</span> {{ "%.5f"|format(r.entry_zone[0]) }} — {{ "%.5f"|format(r.entry_zone[1]) }}</div>
+          <div><span style="color:var(--red)">SL:</span> {{ "%.5f"|format(r.stop_loss) }} | <span style="color:var(--green)">TP:</span> {{ "%.5f"|format(r.take_profit) }}</div>
+        {% endif %}
+        <div><span style="color:var(--muted)">RSI:</span> {{ "%.1f"|format(r.rsi) }} | <span style="color:var(--muted)">ATR:</span> {{ "%.5f"|format(r.atr) }}</div>
+        <div><span style="color:var(--muted)">SMC:</span> {{ r.smc_confluence_count }} confluence | <span style="color:var(--muted)">Sweep:</span> {{ r.sweep_signal }}</div>
+      </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

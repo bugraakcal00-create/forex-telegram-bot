@@ -1,10 +1,18 @@
 python-telegram-bot[job-queue]==21.10
-httpx==0.28.1
+httpx==0.28.0
 pandas==2.2.3
 numpy==2.2.4
 python-dotenv==1.0.1
 APScheduler==3.10.4
-fastapi==0.116.1
-uvicorn==0.35.0
+fastapi==0.115.6
+uvicorn==0.34.0
 jinja2==3.1.6
 python-multipart==0.0.20
+matplotlib==3.9.4
+requests>=2.31.0
+loguru>=0.7.0
+scikit-learn>=1.4.0
+xgboost>=2.0.0
+# Opsiyonel (FinBERT icin):
+# transformers>=4.40.0
+# torch>=2.0.0

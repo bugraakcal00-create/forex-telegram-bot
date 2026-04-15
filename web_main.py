@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import uvicorn
 
+from app.logging_config import setup_logging
+setup_logging()
+
 from app.config import settings
 
 

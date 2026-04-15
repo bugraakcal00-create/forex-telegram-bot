@@ -1,0 +1,469 @@
+{% extends "base.html" %}
+{% block title %}Haber & Takvim{% endblock %}
+{% block nav_news %}active{% endblock %}
+{% block page_title %}Haber & Ekonomik Takvim{% endblock %}
+
+{% block extra_css %}
+/* ── Impact chips ── */
+.impact-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: .64rem;
+  font-weight: 700;
+  letter-spacing: .04em;
+}
+.chip-high   { background: rgba(239,68,68,.13);    color: var(--red);    border: 1px solid rgba(239,68,68,.2);    }
+.chip-med    { background: rgba(245,158,11,.13);   color: var(--gold);   border: 1px solid rgba(245,158,11,.2);   }
+.chip-low    { background: rgba(16,185,129,.13);   color: var(--green);  border: 1px solid rgba(16,185,129,.2);   }
+
+/* ── Impact accordion panel ── */
+.impact-panel {
+  margin-top: 12px;
+  background: rgba(59,130,246,.04);
+  border: 1px solid rgba(59,130,246,.15);
+  border-radius: 12px;
+  overflow: hidden;
+  transition: border-color .2s;
+}
+.impact-panel:hover { border-color: rgba(59,130,246,.28); }
+
+.impact-panel-head {
+  padding: 11px 16px;
+  font-size: .73rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  gap: 10px;
+  user-select: none;
+  transition: background .15s;
+}
+.impact-panel-head:hover { background: rgba(59,130,246,.08); }
+
+.impact-panel-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.impact-panel-body {
+  display: none;
+  padding: 16px;
+  border-top: 1px solid rgba(59,130,246,.12);
+}
+.impact-panel-body.open { display: block; }
+
+.impact-arrow {
+  color: var(--muted2);
+  font-size: .75rem;
+  transition: transform .2s;
+  flex-shrink: 0;
+}
+.impact-arrow.open { transform: rotate(180deg); }
+
+/* ── Impact sections ── */
+.impact-section { margin-bottom: 12px; }
+.impact-section:last-child { margin-bottom: 0; }
+
+.impact-section-title {
+  font-size: .66rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.impact-text {
+  font-size: .8rem;
+  line-height: 1.65;
+  color: var(--text2);
+}
+
+.impact-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.impact-block {
+  border-radius: 10px;
+  padding: 12px;
+}
+.impact-block-up   { background: rgba(16,185,129,.06);  border: 1px solid rgba(16,185,129,.18); }
+.impact-block-down { background: rgba(239,68,68,.06);   border: 1px solid rgba(239,68,68,.18);  }
+.impact-block-tip  { background: rgba(245,158,11,.06);  border: 1px solid rgba(245,158,11,.18); }
+
+/* ── Pair badges ── */
+.impact-pairs { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+.impact-pair-badge {
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--blue-d);
+  color: var(--blue);
+  border: 1px solid rgba(59,130,246,.2);
+  font-size: .67rem;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: .02em;
+}
+
+/* ── Beat badges ── */
+.beat-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: .66rem;
+  font-weight: 700;
+  margin-left: 8px;
+}
+.beat-up      { background: var(--green-d); color: var(--green); border: 1px solid rgba(16,185,129,.2); }
+.beat-down    { background: var(--red-d);   color: var(--red);   border: 1px solid rgba(239,68,68,.2);  }
+.beat-neutral { background: rgba(61,90,128,.18); color: var(--muted2); }
+
+/* ── Calendar event row ── */
+.cal-event-wrap {
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(17,32,64,.6);
+}
+.cal-event-wrap:last-child { border-bottom: none; }
+
+/* ── Volatility badge ── */
+.vol-badge {
+  font-size: .66rem;
+  color: var(--muted2);
+  background: rgba(61,90,128,.15);
+  border: 1px solid rgba(61,90,128,.2);
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* ── News source pill ── */
+.news-source {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 99px;
+  background: var(--blue-d);
+  color: var(--blue);
+  border: 1px solid rgba(59,130,246,.2);
+  font-size: .66rem;
+  font-weight: 700;
+}
+
+/* ── Legend card ── */
+.legend-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(17,32,64,.5);
+}
+.legend-row:last-child { border-bottom: none; }
+.legend-icon {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  margin-top: 4px;
+  flex-shrink: 0;
+}
+
+/* ── Empty state ── */
+.empty-state {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--muted2);
+}
+.empty-state .empty-icon { font-size: 2.8rem; margin-bottom: 14px; }
+.empty-state b { color: var(--text); font-size: .95rem; display: block; margin-bottom: 8px; }
+.empty-state p { font-size: .8rem; line-height: 1.6; }
+{% endblock %}
+
+
+{% block content %}
+
+<div class="g g21">
+
+  <!-- ══════ Left: Forex Haberleri ══════ -->
+  <div>
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <div class="sec-title">📰 Forex Haberleri</div>
+          <div class="sec-sub">Son güncelleme: sunucu önbelleği (5 dk)</div>
+        </div>
+        <a href="/api/news" target="_blank" class="btn btn-ghost" style="font-size:.75rem;padding:6px 13px">
+          { } JSON
+        </a>
+      </div>
+
+      {% if news %}
+        {% for item in news %}
+        <div class="news-item">
+          <div class="news-ttl">
+            <a href="{{ item.url }}" target="_blank" rel="noopener">{{ item.title }}</a>
+          </div>
+          <div class="news-meta">
+            <span class="news-source">{{ item.source }}</span>
+            {% if item.published_at %}
+            <span>🕐 {{ item.published_at[:16].replace('T',' ') }}</span>
+            {% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      {% else %}
+        <div class="empty-state">
+          <div class="empty-icon">📡</div>
+          <b>Haber yüklenemedi</b>
+          <p>
+            RSS kaynaklarına bağlanılamadı veya tüm kaynaklar<br>
+            zaman aşımına uğradı. Sayfayı yenilemeyi deneyin.
+          </p>
+          <a href="/news" class="btn btn-ghost" style="display:inline-flex;margin-top:14px;width:auto;padding:8px 20px">
+            🔄 Yenile
+          </a>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- ══════ Right: Takvim + Legend ══════ -->
+  <div>
+
+    <!-- Ekonomik Takvim -->
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-head">
+        <div>
+          <div class="sec-title">📅 Ekonomik Takvim</div>
+          <div class="sec-sub">Önümüzdeki 48 saatin yüksek etkili olayları</div>
+        </div>
+        <a href="/api/calendar" target="_blank" class="btn btn-ghost" style="font-size:.75rem;padding:6px 13px">
+          { } JSON
+        </a>
+      </div>
+
+      {% if calendar %}
+        <div>
+          {% for event in calendar %}
+          {% set ia = event.impact_analysis %}
+
+          <div class="cal-event-wrap">
+            <!-- Olay ana satırı -->
+            <div style="display:flex;align-items:flex-start;gap:10px">
+              <!-- Zaman -->
+              <div class="cal-time" style="flex-shrink:0;padding-top:2px">
+                {{ event.date[:16].replace('T',' ') if event.date else '-' }}
+              </div>
+
+              <!-- Dot -->
+              <div class="cal-dot dot-high" style="margin-top:6px;flex-shrink:0"></div>
+
+              <!-- Bayrak + içerik -->
+              <div style="flex:1;min-width:0">
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:5px">
+                  <span class="cal-flag">{{ event.country }}</span>
+                  <span class="impact-chip chip-high">YÜKSEK</span>
+                  <span style="font-size:.82rem;font-weight:600;color:var(--text)">{{ event.event }}</span>
+                  {% if event.actual and event.forecast %}
+                    <span class="beat-badge beat-neutral" title="Gerçekleşen vs Tahmin">G/T</span>
+                  {% endif %}
+                </div>
+
+                <!-- Değerler -->
+                <div style="display:flex;gap:10px;font-size:.73rem;flex-wrap:wrap">
+                  {% if event.actual %}
+                    <span class="c-green">
+                      <span class="c-muted">G: </span>{{ event.actual }}
+                    </span>
+                  {% endif %}
+                  {% if event.forecast %}
+                    <span>
+                      <span class="c-muted">T: </span>{{ event.forecast }}
+                    </span>
+                  {% endif %}
+                  {% if event.previous %}
+                    <span class="c-muted">
+                      Ö: {{ event.previous }}
+                    </span>
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+
+            <!-- Etki analizi accordion -->
+            {% if ia %}
+            <div class="impact-panel" style="margin-top:10px">
+              <div class="impact-panel-head" onclick="toggleImpact(this)">
+                <div style="display:flex;align-items:center;gap:8px;min-width:0">
+                  <span style="color:var(--blue);font-size:.82rem;font-weight:700">📊 {{ ia.name }}</span>
+                </div>
+                <div class="impact-panel-meta">
+                  {% if ia.volatilite %}
+                    <span class="vol-badge">{{ ia.volatilite }}</span>
+                  {% endif %}
+                  {% if ia.tipik_hareket %}
+                    <span class="vol-badge">{{ ia.tipik_hareket }}</span>
+                  {% endif %}
+                  <span class="impact-arrow">▼</span>
+                </div>
+              </div>
+
+              <div class="impact-panel-body">
+
+                <!-- Açıklama -->
+                <div class="impact-section">
+                  <div class="impact-section-title" style="color:var(--muted2)">
+                    ℹ Açıklama
+                  </div>
+                  <div class="impact-text">{{ ia.aciklama }}</div>
+                </div>
+
+                <!-- Yukarı / Aşağı etki grid -->
+                <div class="impact-grid">
+                  <div class="impact-block impact-block-up">
+                    <div class="impact-section-title" style="color:var(--green)">
+                      ▲ Beklentinin Üzerinde
+                    </div>
+                    <div class="impact-text">{{ ia.yukari_etki }}</div>
+                  </div>
+                  <div class="impact-block impact-block-down">
+                    <div class="impact-section-title" style="color:var(--red)">
+                      ▼ Beklentinin Altında
+                    </div>
+                    <div class="impact-text">{{ ia.asagi_etki }}</div>
+                  </div>
+                </div>
+
+                <!-- Etkilenen çiftler -->
+                <div class="impact-section" style="margin-top:14px">
+                  <div class="impact-section-title" style="color:var(--muted2)">
+                    Etkilenen Pariteler
+                  </div>
+                  <div class="impact-pairs">
+                    {% for pair in ia.etkilenen %}
+                      <span class="impact-pair-badge">{{ pair }}</span>
+                    {% endfor %}
+                  </div>
+                </div>
+
+                <!-- Geçmiş örnekler -->
+                <div class="impact-section">
+                  <div class="impact-section-title" style="color:var(--muted2)">
+                    📅 Geçmiş Örnekler
+                  </div>
+                  <div class="impact-text" style="color:var(--muted2)">{{ ia.gecmis }}</div>
+                </div>
+
+                <!-- Tavsiye -->
+                <div class="impact-block impact-block-tip" style="margin-top:4px">
+                  <div class="impact-section-title" style="color:var(--gold)">
+                    💡 İşlem Tavsiyesi
+                  </div>
+                  <div class="impact-text">{{ ia.tavsiye }}</div>
+                </div>
+
+              </div><!-- /body -->
+            </div><!-- /impact-panel -->
+            {% endif %}
+
+          </div><!-- /cal-event-wrap -->
+          {% endfor %}
+        </div>
+
+      {% else %}
+        <div class="empty-state">
+          <div class="empty-icon">📅</div>
+          <b>Takvim verisi yok</b>
+          <p>
+            FMP API anahtarı tanımlı değil veya veri alınamadı.<br>
+            <code style="background:rgba(255,255,255,.07);padding:2px 7px;border-radius:5px;font-size:.72rem">FMP_API_KEY</code>
+            değerini .env dosyasına ekleyin.
+          </p>
+          <a href="https://financialmodelingprep.com/developer/docs" target="_blank"
+             class="btn btn-ghost" style="display:inline-flex;margin-top:14px;width:auto;padding:8px 20px">
+            Ücretsiz API Anahtarı Al →
+          </a>
+        </div>
+      {% endif %}
+    </div>
+
+    <!-- Etki Açıklama Kartı -->
+    <div class="card card-sm">
+      <div class="card-head">
+        <div class="card-title">Etki Seviyesi Açıklaması</div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:0">
+        <div class="legend-row">
+          <div class="legend-icon" style="background:var(--red);box-shadow:0 0 8px rgba(239,68,68,.5)"></div>
+          <div>
+            <span class="c-red" style="font-weight:700;font-size:.81rem">Yüksek Etki</span>
+            <span class="c-muted" style="font-size:.77rem"> — NFP, FOMC, CPI, Faiz kararları gibi piyasayı büyük etkileyen veriler</span>
+          </div>
+        </div>
+        <div class="legend-row">
+          <div class="legend-icon" style="background:var(--gold);box-shadow:0 0 6px rgba(245,158,11,.4)"></div>
+          <div>
+            <span class="c-gold" style="font-weight:700;font-size:.81rem">Orta Etki</span>
+            <span class="c-muted" style="font-size:.77rem"> — PMI, Retail Sales, İşsizlik başvuruları gibi ikincil veriler</span>
+          </div>
+        </div>
+        <div class="legend-row">
+          <div class="legend-icon" style="background:var(--green);box-shadow:0 0 6px rgba(16,185,129,.4)"></div>
+          <div>
+            <span class="c-green" style="font-weight:700;font-size:.81rem">Düşük Etki</span>
+            <span class="c-muted" style="font-size:.77rem"> — Günlük rutin istatistikler, düşük volatilite beklentisi</span>
+          </div>
+        </div>
+      </div>
+
+      <hr>
+
+      <div style="font-size:.73rem;color:var(--muted2);line-height:1.7">
+        <span style="font-weight:700;color:var(--text2)">Kısaltmalar:</span><br>
+        <span class="c-green">G</span> = Gerçekleşen &nbsp;|&nbsp;
+        <span class="c-muted">T</span> = Tahmin &nbsp;|&nbsp;
+        <span class="c-muted">Ö</span> = Önceki değer
+      </div>
+    </div>
+
+  </div><!-- /right col -->
+
+</div>
+
+{% endblock %}
+
+
+{% block extra_js %}
+/* Auto-refresh her 5 dakikada */
+setTimeout(function () { location.reload(); }, 5 * 60 * 1000);
+
+/* Etki analizi panellerini aç/kapat */
+function toggleImpact(headerEl) {
+  var body  = headerEl.nextElementSibling;
+  var arrow = headerEl.querySelector('.impact-arrow');
+
+  if (body.classList.contains('open')) {
+    body.classList.remove('open');
+    if (arrow) {
+      arrow.textContent = '▼';
+      arrow.classList.remove('open');
+    }
+  } else {
+    body.classList.add('open');
+    if (arrow) {
+      arrow.textContent = '▲';
+      arrow.classList.add('open');
+    }
+  }
+}
+{% endblock %}

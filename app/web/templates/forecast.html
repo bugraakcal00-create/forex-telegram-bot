@@ -1,0 +1,527 @@
+{% extends "base.html" %}
+{% block title %}Tahmin{% endblock %}
+{% block nav_forecast %}active{% endblock %}
+{% block page_title %}Piyasa Tahmini{% endblock %}
+
+{% block extra_css %}
+.forecast-chart-wrap {
+  background: #060d1a;
+  border: 1px solid var(--border2);
+  border-radius: 14px;
+  overflow: hidden;
+  text-align: center;
+  min-height: 360px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+.forecast-chart-wrap img {
+  max-width: 100%;
+  border-radius: 10px;
+  display: block;
+}
+.signal-hero {
+  text-align: center;
+  padding: 22px 0 10px;
+}
+.signal-hero .sig-label {
+  font-size: 2.2rem;
+  font-weight: 800;
+  letter-spacing: -.04em;
+  line-height: 1;
+}
+.signal-hero .sig-score {
+  font-size: .82rem;
+  color: var(--muted2);
+  margin-top: 8px;
+}
+.tp-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: .82rem;
+}
+.tp-row:last-child { border-bottom: none; }
+.tp-label { color: var(--muted2); font-size: .72rem; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+.tp-val   { font-family: 'JetBrains Mono', monospace; font-weight: 600; }
+.bias-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-top: 6px;
+}
+.bias-item {
+  text-align: center;
+  background: rgba(255,255,255,.03);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 8px;
+}
+.bias-lbl { font-size: .65rem; color: var(--muted2); text-transform: uppercase; letter-spacing: .07em; margin-bottom: 6px; font-weight: 700; }
+.bias-val { font-size: 1.1rem; font-weight: 800; letter-spacing: -.02em; }
+.mc-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: .82rem;
+}
+.mc-row:last-child { border-bottom: none; }
+.mc-key { color: var(--muted2); font-size: .72rem; }
+.mc-val { font-family: 'JetBrains Mono', monospace; font-weight: 600; }
+.refresh-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.spinner {
+  display: none;
+  width: 18px; height: 18px;
+  border: 2px solid var(--border2);
+  border-top-color: var(--blue);
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.spinner.active { display: inline-block; }
+.conf-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 0;
+  font-size: .8rem;
+  border-bottom: 1px solid var(--border);
+}
+.conf-row:last-child { border-bottom: none; }
+{% endblock %}
+
+{% block content %}
+<div class="g" style="gap:18px">
+
+  <!-- ── Selector row ── -->
+  <div class="card card-sm fade-up">
+    <div class="refresh-bar">
+      <div style="display:flex;gap:10px;align-items:center;flex:1;flex-wrap:wrap">
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <label class="form-label" style="margin:0">Sembol</label>
+          <select id="selSymbol" style="width:140px">
+            {% for s in symbols %}
+            <option value="{{ s }}" {% if s == selected_symbol %}selected{% endif %}>{{ s }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <label class="form-label" style="margin:0">Zaman Dilimi</label>
+          <select id="selTf" style="width:120px">
+            {% for tf in timeframes %}
+            <option value="{{ tf }}" {% if tf == selected_timeframe %}selected{% endif %}>{{ tf }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div style="margin-top:20px">
+          <button class="btn btn-primary" id="btnAnalyze" onclick="runForecast()">
+            Analiz Et
+          </button>
+        </div>
+        <div style="margin-top:20px">
+          <span class="spinner" id="spinner"></span>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:4px">
+        <label class="form-label" style="margin:0;font-size:.72rem">Oto-Yenile</label>
+        <select id="autoRefreshSel" style="width:100px" onchange="setAutoRefresh()">
+          <option value="0">Kapalı</option>
+          <option value="30">30sn</option>
+          <option value="60">1dk</option>
+          <option value="120">2dk</option>
+          <option value="300">5dk</option>
+        </select>
+      </div>
+    </div>
+    {% if error %}
+    <div style="margin-top:12px;padding:10px 14px;background:var(--red-d);border:1px solid rgba(239,68,68,.3);border-radius:8px;color:var(--red);font-size:.82rem">
+      {{ error }}
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- ── Main 2-col layout ── -->
+  {% if result %}
+  <div class="g" style="grid-template-columns:1fr 340px;gap:16px;align-items:start">
+
+    <!-- Left column: chart + confluence -->
+    <div class="g" style="gap:14px">
+
+      <!-- Chart -->
+      <div class="card" style="padding:12px" id="chartCard">
+        <div class="sec-head" style="margin-bottom:10px">
+          <div>
+            <div class="sec-title" id="chartTitle">
+              {{ selected_symbol }} / {{ selected_timeframe }}
+            </div>
+            <div class="sec-sub">Tahmini yön projeksiyonu</div>
+          </div>
+          <div id="signalBadge">
+            {% if result %}
+              {% set sig = result.signal %}
+              {% if sig == "LONG" %}
+                <span class="badge bg-green" style="font-size:.85rem;padding:5px 14px">▲ AL (LONG)</span>
+              {% elif sig == "SHORT" %}
+                <span class="badge bg-red" style="font-size:.85rem;padding:5px 14px">▼ SAT (SHORT)</span>
+              {% else %}
+                <span class="badge bg-muted" style="font-size:.85rem;padding:5px 14px">— BEKLE</span>
+              {% endif %}
+            {% endif %}
+          </div>
+        </div>
+        <div class="forecast-chart-wrap" id="chartWrap">
+          {% if chart_b64 %}
+          <img id="chartImg" src="data:image/png;base64,{{ chart_b64 }}" alt="Tahmin Grafiği">
+          {% else %}
+          <div style="color:var(--muted2);font-size:.85rem" id="chartPlaceholder">
+            Grafik yükleniyor...
+          </div>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Confluence Factors -->
+      {% if result %}
+      <div class="card fade-up d2">
+        <div class="card-head"><div class="card-title">Confluence Faktörleri</div></div>
+        <div id="confluenceRows">
+          <div class="conf-row">
+            <span>Ana Trend</span>
+            <span class="badge {% if result.trend == 'UP' %}bg-green{% elif result.trend == 'DOWN' %}bg-red{% else %}bg-muted{% endif %}">
+              {{ result.trend or "—" }}
+            </span>
+          </div>
+          <div class="conf-row">
+            <span>HTF Trend</span>
+            <span class="badge {% if result.higher_tf_trend == 'UP' %}bg-green{% elif result.higher_tf_trend == 'DOWN' %}bg-red{% else %}bg-muted{% endif %}">
+              {{ result.higher_tf_trend or "—" }}
+            </span>
+          </div>
+          <div class="conf-row">
+            <span>FVG Bölgesi</span>
+            <span class="badge {% if result.fvg_zones %}bg-green{% else %}bg-muted{% endif %}">
+              {% if result.fvg_zones %}{{ result.fvg_zones|length }} Bölge{% else %}Yok{% endif %}
+            </span>
+          </div>
+          <div class="conf-row">
+            <span>Order Block</span>
+            <span class="badge {% if result.order_blocks %}bg-gold{% else %}bg-muted{% endif %}">
+              {% if result.order_blocks %}{{ result.order_blocks|length }} OB{% else %}Yok{% endif %}
+            </span>
+          </div>
+          <div class="conf-row">
+            <span>Likidite Sweep</span>
+            <span class="badge {% if result.sweep_signal and result.sweep_signal != 'NONE' %}bg-purple{% else %}bg-muted{% endif %}">
+              {{ result.sweep_signal or "YOK" }}
+            </span>
+          </div>
+          <div class="conf-row">
+            <span>Market Rejimi</span>
+            <span class="badge bg-blue">{{ result.regime or "—" }}</span>
+          </div>
+          {% if result.volume_analysis %}
+          <div class="conf-row">
+            <span>Hacim Delta</span>
+            <span class="badge {% if result.volume_analysis.delta_bias == 'BULLISH' %}bg-green{% elif result.volume_analysis.delta_bias == 'BEARISH' %}bg-red{% else %}bg-muted{% endif %}">
+              {{ result.volume_analysis.delta_bias or "—" }}
+            </span>
+          </div>
+          {% endif %}
+          <div class="conf-row" style="border-bottom:none;padding-top:10px;margin-top:4px">
+            <span style="font-weight:700">Toplam Skor</span>
+            <span style="font-family:'JetBrains Mono',monospace;font-weight:800;color:var(--gold);font-size:1.05rem">
+              {{ result.setup_score }}/100
+            </span>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+
+    </div>
+
+    <!-- Right column: signal info + biases + TP + MC -->
+    <div class="g" style="gap:14px">
+
+      <!-- Signal Hero -->
+      {% if result %}
+      <div class="card fade-up">
+        <div class="signal-hero">
+          {% set sig = result.signal %}
+          {% if sig == "LONG" %}
+          <div class="sig-label c-green">▲ AL</div>
+          {% elif sig == "SHORT" %}
+          <div class="sig-label c-red">▼ SAT</div>
+          {% else %}
+          <div class="sig-label c-muted">BEKLE</div>
+          {% endif %}
+          <div class="sig-score">
+            Kalite:
+            <strong class="c-gold">{{ result.quality or "—" }}</strong>
+            &nbsp;|&nbsp; Skor:
+            <strong>{{ result.setup_score }}/100</strong>
+            &nbsp;|&nbsp; R:R
+            <strong class="c-green">{{ "%.2f"|format(result.rr_ratio or 0) }}</strong>
+          </div>
+          {% if result.ml_probability is defined %}
+          <div style="margin-top:8px;font-size:.75rem;color:var(--muted2)">
+            ML Olasılık: <strong class="c-blue">{{ "%.0f"|format((result.ml_probability or 0.55)*100) }}%</strong>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Entry / TP / SL levels -->
+      <div class="card card-sm fade-up d1">
+        <div class="card-title" style="margin-bottom:12px">Seviyeler</div>
+        <div class="tp-row">
+          <span class="tp-label">Giriş</span>
+          <span class="tp-val c-blue">
+            {% if result.entry_zone %}
+              {{ "%.5f"|format(result.entry_zone[0]) }} – {{ "%.5f"|format(result.entry_zone[1]) }}
+            {% else %}—{% endif %}
+          </span>
+        </div>
+        <div class="tp-row">
+          <span class="tp-label">Stop Loss</span>
+          <span class="tp-val c-red">{{ "%.5f"|format(result.stop_loss) if result.stop_loss else "—" }}</span>
+        </div>
+        <div class="tp-row">
+          <span class="tp-label">TP 1</span>
+          <span class="tp-val c-green">{{ "%.5f"|format(result.take_profit) if result.take_profit else "—" }}</span>
+        </div>
+        <div class="tp-row">
+          <span class="tp-label">TP 2</span>
+          <span class="tp-val c-green">{{ "%.5f"|format(result.take_profit_2) if result.take_profit_2 else "—" }}</span>
+        </div>
+        {% if result.atr %}
+        <div class="tp-row">
+          <span class="tp-label">ATR</span>
+          <span class="tp-val c-muted">{{ "%.5f"|format(result.atr) }}</span>
+        </div>
+        {% endif %}
+      </div>
+      {% endif %}
+
+      <!-- Bias Cards: DXY / COT / Sentiment -->
+      <div class="card card-sm fade-up d2">
+        <div class="card-title" style="margin-bottom:10px">Piyasa Bağlamı</div>
+        <div class="bias-grid">
+          <div class="bias-item">
+            <div class="bias-lbl">DXY</div>
+            <div class="bias-val {% if result and result.dxy_bias == 'BULLISH' %}c-red{% elif result and result.dxy_bias == 'BEARISH' %}c-green{% else %}c-muted{% endif %}" id="dxyVal">
+              {{ result.dxy_bias if result else "NEUTRAL" }}
+            </div>
+          </div>
+          <div class="bias-item">
+            <div class="bias-lbl">COT</div>
+            <div class="bias-val {% if cot_bias == 'BULLISH' %}c-green{% elif cot_bias == 'BEARISH' %}c-red{% else %}c-muted{% endif %}" id="cotVal">
+              {{ cot_bias or "NEUTRAL" }}
+            </div>
+          </div>
+          <div class="bias-item">
+            <div class="bias-lbl">Duygu</div>
+            <div class="bias-val {% if sentiment_score > 0.2 %}c-green{% elif sentiment_score < -0.2 %}c-red{% else %}c-muted{% endif %}" id="sentVal">
+              {{ "%.2f"|format(sentiment_score) }}
+            </div>
+          </div>
+        </div>
+        {% if result %}
+        <div style="margin-top:10px">
+          <div class="conf-row" style="padding:5px 0;border-bottom:none">
+            <span class="c-muted" style="font-size:.72rem">Sembol</span>
+            <span class="mono" style="font-size:.78rem">{{ selected_symbol }} / {{ selected_timeframe }}</span>
+          </div>
+          {% if result.regime %}
+          <div class="conf-row" style="padding:5px 0;border-bottom:none">
+            <span class="c-muted" style="font-size:.72rem">Rejim</span>
+            <span class="badge bg-blue" style="font-size:.68rem">{{ result.regime }}</span>
+          </div>
+          {% endif %}
+        </div>
+        {% endif %}
+      </div>
+
+      <!-- Partial TP Structure -->
+      {% if partial_tp %}
+      <div class="card card-sm fade-up d3">
+        <div class="card-title" style="margin-bottom:10px">Kısmi TP Planı</div>
+        <div class="tp-row">
+          <span class="tp-label">TP1 ({{ "%.0f"|format((partial_tp.tp1_size_pct or 0.5)*100) }}%)</span>
+          <span class="tp-val c-green">{{ "%.5f"|format(partial_tp.tp1) }}</span>
+        </div>
+        <div class="tp-row">
+          <span class="tp-label">TP2 (kalan)</span>
+          <span class="tp-val c-green">{{ "%.5f"|format(partial_tp.tp2) }}</span>
+        </div>
+        <div class="tp-row">
+          <span class="tp-label">BE (SL taşı)</span>
+          <span class="tp-val c-blue">{{ "%.5f"|format(partial_tp.breakeven_at) if partial_tp.breakeven_at else "TP1'den sonra" }}</span>
+        </div>
+      </div>
+      {% endif %}
+
+      <!-- Monte Carlo -->
+      {% if monte_carlo %}
+      <div class="card card-sm fade-up d4">
+        <div class="card-title" style="margin-bottom:10px">Monte Carlo Sim.</div>
+        <div class="mc-row">
+          <span class="mc-key">Medyan Getiri</span>
+          <span class="mc-val c-green">{{ "%.1f"|format(monte_carlo.median_return * 100) }}%</span>
+        </div>
+        <div class="mc-row">
+          <span class="mc-key">Max DD (med.)</span>
+          <span class="mc-val c-gold">{{ "%.1f"|format(monte_carlo.max_dd_median * 100) }}%</span>
+        </div>
+        <div class="mc-row">
+          <span class="mc-key">İflas Olasılığı</span>
+          <span class="mc-val {% if monte_carlo.ruin_probability > 0.05 %}c-red{% else %}c-green{% endif %}">
+            {{ "%.1f"|format(monte_carlo.ruin_probability * 100) }}%
+          </span>
+        </div>
+        <div class="mc-row">
+          <span class="mc-key">Öneri</span>
+          <span class="mc-val {% if monte_carlo.recommendation == 'DEVAM' %}c-green{% elif monte_carlo.recommendation == 'DUR' %}c-red{% else %}c-gold{% endif %}">
+            {{ monte_carlo.recommendation }}
+          </span>
+        </div>
+      </div>
+      {% else %}
+      <div class="card card-sm fade-up d4" style="opacity:.6">
+        <div class="card-title">Monte Carlo</div>
+        <div style="color:var(--muted2);font-size:.78rem;margin-top:8px">
+          Yeterli işlem verisi yok (min 20 kayıt)
+        </div>
+      </div>
+      {% endif %}
+
+      <!-- PDH/PDL if available -->
+      {% if result and result.pdh_pdl %}
+      <div class="card card-sm fade-up">
+        <div class="card-title" style="margin-bottom:10px">PDH / PDL Seviyeleri</div>
+        {% for k, v in result.pdh_pdl.items() %}
+        {% if v %}
+        <div class="tp-row">
+          <span class="tp-label">{{ k | replace("_", " ") | upper }}</span>
+          <span class="tp-val c-muted">{{ "%.5f"|format(v) }}</span>
+        </div>
+        {% endif %}
+        {% endfor %}
+      </div>
+      {% endif %}
+
+    </div>
+  </div>
+  {% else %}
+  <div class="card" style="padding:30px;text-align:center">
+    <div style="font-size:1.2rem;color:var(--gold);margin-bottom:10px">Veri Yok</div>
+    <div style="color:var(--muted2)">API limiti dolmuş veya veri alınamadı. Lütfen daha sonra tekrar deneyin.</div>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+let _autoTimer = null;
+
+function setAutoRefresh() {
+  clearInterval(_autoTimer);
+  const secs = parseInt(document.getElementById('autoRefreshSel').value);
+  if (secs > 0) {
+    _autoTimer = setInterval(function() {
+      window.location.reload();
+    }, secs * 1000);
+  }
+}
+
+async function runForecast() {
+  const symbol = document.getElementById('selSymbol').value;
+  const tf = document.getElementById('selTf').value;
+
+  // Tam sayfa yenileme — tüm paneller doğru veriyle güncellensin
+  window.location.href = '/forecast?symbol=' + encodeURIComponent(symbol) + '&timeframe=' + encodeURIComponent(tf);
+  return;
+
+  // --- Aşağıdaki AJAX kodu oto-yenile modu için kalıyor ---
+  const spinner = document.getElementById('spinner');
+  const btn = document.getElementById('btnAnalyze');
+
+  spinner.classList.add('active');
+  btn.disabled = true;
+  btn.textContent = 'Yükleniyor...';
+
+  try {
+    const res = await fetch('/api/forecast-chart', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ symbol, timeframe: tf })
+    });
+    const data = await res.json();
+
+    if (data.error) {
+      alert('Hata: ' + data.error);
+      return;
+    }
+
+    // Update chart
+    const wrap = document.getElementById('chartWrap');
+    if (data.chart_b64) {
+      let img = document.getElementById('chartImg');
+      if (!img) {
+        wrap.innerHTML = '<img id="chartImg" style="max-width:100%;border-radius:10px;display:block;" alt="Tahmin">';
+        img = document.getElementById('chartImg');
+      }
+      img.src = 'data:image/png;base64,' + data.chart_b64;
+    }
+
+    // Update title
+    const r = data.result || {};
+    document.getElementById('chartTitle').textContent = data.symbol + ' / ' + data.timeframe;
+
+    // Update signal badge
+    const badgeEl = document.getElementById('signalBadge');
+    const sig = r.signal || 'WAIT';
+    if (sig === 'LONG') {
+      badgeEl.innerHTML = '<span class="badge bg-green" style="font-size:.85rem;padding:5px 14px">&#9650; AL (LONG)</span>';
+    } else if (sig === 'SHORT') {
+      badgeEl.innerHTML = '<span class="badge bg-red" style="font-size:.85rem;padding:5px 14px">&#9660; SAT (SHORT)</span>';
+    } else {
+      badgeEl.innerHTML = '<span class="badge bg-muted" style="font-size:.85rem;padding:5px 14px">&mdash; BEKLE</span>';
+    }
+
+    // Update bias pills
+    const cotEl = document.getElementById('cotVal');
+    if (cotEl) {
+      cotEl.textContent = data.cot_bias || 'NEUTRAL';
+      cotEl.className = 'bias-val ' + (data.cot_bias === 'BULLISH' ? 'c-green' : data.cot_bias === 'BEARISH' ? 'c-red' : 'c-muted');
+    }
+    const sentEl = document.getElementById('sentVal');
+    if (sentEl) {
+      const sv = data.sentiment_score || 0;
+      sentEl.textContent = sv.toFixed(2);
+      sentEl.className = 'bias-val ' + (sv > 0.2 ? 'c-green' : sv < -0.2 ? 'c-red' : 'c-muted');
+    }
+
+    // Reload page with new symbol/tf in URL for full re-render of all sections
+    // (optional — full page reload gives complete template update)
+    // window.location.href = '/forecast?symbol=' + data.symbol + '&timeframe=' + data.timeframe;
+
+  } catch (e) {
+    alert('İstek hatası: ' + e.message);
+  } finally {
+    spinner.classList.remove('active');
+    btn.disabled = false;
+    btn.textContent = 'Analiz Et';
+  }
+}
+{% endblock %}

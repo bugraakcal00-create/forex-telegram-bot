@@ -1,0 +1,14 @@
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.env
+.git/
+.claude/
+data/*.db
+data/*.pkl
+data/logs/
+*.png
+*.bat
+*.vbs
+.gitignore

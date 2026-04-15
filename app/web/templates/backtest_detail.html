@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+{% block title %}Backtest #{{ bt.id }}{% endblock %}
+{% block nav_backtest %}active{% endblock %}
+{% block page_title %}Backtest Detay — {{ bt.symbol }} {{ bt.timeframe }}{% endblock %}
+
+{% block content %}
+<!-- KPI Cards -->
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:20px">
+  <div class="card" style="padding:16px;text-align:center">
+    <div style="font-size:11px;color:var(--muted2)">Sinyal</div>
+    <div style="font-size:22px;font-weight:700;color:var(--blue)">{{ bt.tested_signals }}</div>
+  </div>
+  <div class="card" style="padding:16px;text-align:center">
+    <div style="font-size:11px;color:var(--muted2)">Win Rate</div>
+    <div style="font-size:22px;font-weight:700;color:{% if bt.winrate >= 55 %}var(--green){% else %}var(--red){% endif %}">{{ bt.winrate }}%</div>
+  </div>
+  <div class="card" style="padding:16px;text-align:center">
+    <div style="font-size:11px;color:var(--muted2)">Sharpe</div>
+    <div style="font-size:22px;font-weight:700;color:var(--gold)">{{ bt.sharpe_ratio or '-' }}</div>
+  </div>
+  <div class="card" style="padding:16px;text-align:center">
+    <div style="font-size:11px;color:var(--muted2)">Profit Factor</div>
+    <div style="font-size:22px;font-weight:700;color:var(--purple)">{{ bt.profit_factor or '-' }}</div>
+  </div>
+  <div class="card" style="padding:16px;text-align:center">
+    <div style="font-size:11px;color:var(--muted2)">Max DD</div>
+    <div style="font-size:22px;font-weight:700;color:var(--red)">{{ bt.max_drawdown or 0 }}%</div>
+  </div>
+  <div class="card" style="padding:16px;text-align:center">
+    <div style="font-size:11px;color:var(--muted2)">Expectancy</div>
+    <div style="font-size:22px;font-weight:700;color:{% if bt.expectancy > 0 %}var(--green){% else %}var(--red){% endif %}">{{ bt.expectancy }}R</div>
+  </div>
+</div>
+
+<!-- Chart Image -->
+{% if chart_b64 %}
+<div class="card" style="padding:16px;margin-bottom:20px">
+  <h3 style="font-size:14px;margin-bottom:12px;color:var(--gold)">Equity Curve & Drawdown</h3>
+  <img src="data:image/png;base64,{{ chart_b64 }}" style="width:100%;border-radius:10px" alt="Backtest Chart"/>
+</div>
+{% endif %}
+
+<!-- Equity Curve (Chart.js) -->
+{% if equity_curve|length > 1 %}
+<div class="card" style="padding:16px;margin-bottom:20px">
+  <h3 style="font-size:14px;margin-bottom:12px">Equity Curve (Interaktif)</h3>
+  <canvas id="equity-chart" height="200"></canvas>
+</div>
+{% endif %}
+
+<!-- Monthly Returns -->
+{% if monthly_breakdown %}
+<div class="card" style="padding:16px;margin-bottom:20px">
+  <h3 style="font-size:14px;margin-bottom:12px">Aylik Getiri</h3>
+  <canvas id="monthly-chart" height="150"></canvas>
+</div>
+{% endif %}
+
+<!-- Trade Log -->
+{% if trade_log|length > 0 %}
+<div class="card" style="padding:16px">
+  <h3 style="font-size:14px;margin-bottom:12px">Trade Log (Son 50)</h3>
+  <div style="overflow-x:auto;max-height:400px;overflow-y:auto">
+    <table style="width:100%;border-collapse:collapse;font-size:11px">
+      <thead>
+        <tr style="border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--card-solid)">
+          <th style="text-align:left;padding:6px;color:var(--muted2)">#</th>
+          <th style="text-align:left;padding:6px;color:var(--muted2)">Tarih</th>
+          <th style="text-align:center;padding:6px;color:var(--muted2)">Yon</th>
+          <th style="text-align:center;padding:6px;color:var(--muted2)">Kalite</th>
+          <th style="text-align:center;padding:6px;color:var(--muted2)">Skor</th>
+          <th style="text-align:center;padding:6px;color:var(--muted2)">R/R</th>
+          <th style="text-align:center;padding:6px;color:var(--muted2)">Sonuc</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in trade_log[-50:] %}
+        <tr style="border-bottom:1px solid var(--border)">
+          <td style="padding:6px;color:var(--muted)">{{ loop.index }}</td>
+          <td style="padding:6px;color:var(--text2)">{{ t.dt[:16] if t.dt else '-' }}</td>
+          <td style="text-align:center;padding:6px">
+            <span style="color:{% if t.signal == 'LONG' %}var(--green){% else %}var(--red){% endif %};font-weight:600">{{ t.signal }}</span>
+          </td>
+          <td style="text-align:center;padding:6px">{{ t.quality }}</td>
+          <td style="text-align:center;padding:6px">{{ t.score }}</td>
+          <td style="text-align:center;padding:6px;font-weight:600;color:{% if t.rr > 0 %}var(--green){% else %}var(--red){% endif %}">
+            {{ t.rr }}R
+          </td>
+          <td style="text-align:center;padding:6px">
+            {% if t.outcome == 'win' %}
+              <span style="background:var(--green-d);color:var(--green);padding:2px 8px;border-radius:8px;font-size:10px">WIN</span>
+            {% else %}
+              <span style="background:var(--red-d);color:var(--red);padding:2px 8px;border-radius:8px;font-size:10px">LOSS</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<div style="margin-top:20px">
+  <a href="/backtest" style="color:var(--blue);text-decoration:none;font-size:13px">&larr; Tum Backtestler</a>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{% if equity_curve|length > 1 %}
+(function() {
+  var data = {{ equity_curve | tojson }};
+  var ctx = document.getElementById('equity-chart').getContext('2d');
+  new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: data.map(function(_,i){ return i; }),
+      datasets: [{
+        label: 'Equity (R)',
+        data: data,
+        borderColor: '#10b981',
+        backgroundColor: 'rgba(16,185,129,0.08)',
+        fill: true,
+        tension: 0.3,
+        pointRadius: 0,
+        borderWidth: 1.5
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { display: false },
+        y: { grid: { color: 'rgba(26,40,64,0.5)' }, ticks: { color: '#5a7aa8', font: { size: 10 } } }
+      }
+    }
+  });
+})();
+{% endif %}
+
+{% if monthly_breakdown %}
+(function() {
+  var data = {{ monthly_breakdown | tojson }};
+  var months = Object.keys(data).sort();
+  var values = months.map(function(m){ return data[m]; });
+  var colors = values.map(function(v){ return v >= 0 ? '#10b981' : '#ef4444'; });
+  var ctx = document.getElementById('monthly-chart').getContext('2d');
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: months,
+      datasets: [{
+        label: 'R',
+        data: values,
+        backgroundColor: colors,
+        borderRadius: 4
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: '#5a7aa8', font: { size: 9 } } },
+        y: { grid: { color: 'rgba(26,40,64,0.5)' }, ticks: { color: '#5a7aa8', font: { size: 10 } } }
+      }
+    }
+  });
+})();
+{% endif %}
+{% endblock %}

@@ -1,0 +1,352 @@
+{% extends "base.html" %}
+{% block title %}Sinyaller{% endblock %}
+{% block nav_sig %}active{% endblock %}
+{% block page_title %}Sinyal Günlüğü{% endblock %}
+
+{% block extra_css %}
+/* ── Filter bar ── */
+.filter-bar {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.filter-bar form {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.filter-bar select,
+.filter-bar input {
+  width: auto;
+  min-width: 120px;
+}
+
+/* ── Outcome colors ── */
+.outcome-tp   { color: var(--green);  }
+.outcome-sl   { color: var(--red);    }
+.outcome-pend { color: var(--gold);   }
+.outcome-none { color: var(--muted2); }
+
+/* ── Score bar in table ── */
+.score-bar-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.score-bar {
+  width: 36px;
+  height: 4px;
+  background: rgba(255,255,255,.08);
+  border-radius: 99px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.score-fill {
+  height: 100%;
+  border-radius: 99px;
+}
+
+/* ── Filter select pill style ── */
+.filter-select-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255,255,255,.04);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 4px 10px;
+}
+.filter-select-group label {
+  font-size: .7rem;
+  color: var(--muted2);
+  font-weight: 600;
+  white-space: nowrap;
+  letter-spacing: .03em;
+}
+.filter-select-group select {
+  background: transparent;
+  border: none;
+  padding: 4px 4px;
+  font-size: .8rem;
+  min-width: 110px;
+  box-shadow: none;
+}
+.filter-select-group select:focus {
+  box-shadow: none;
+  border-color: transparent;
+}
+{% endblock %}
+
+
+{% block content %}
+
+<!-- ══════════ Filter Bar ══════════ -->
+<div class="card card-sm" style="margin-bottom:14px">
+  <div class="filter-bar">
+    <form method="get" action="/signals" style="gap:10px">
+      <div class="filter-select-group">
+        <label>Sinyal</label>
+        <select name="signal_filter" onchange="this.form.submit()">
+          <option value="ALL"      {% if signal_filter=='ALL'      %}selected{% endif %}>Tümü</option>
+          <option value="LONG"     {% if signal_filter=='LONG'     %}selected{% endif %}>LONG (AL)</option>
+          <option value="SHORT"    {% if signal_filter=='SHORT'    %}selected{% endif %}>SHORT (SAT)</option>
+          <option value="NO TRADE" {% if signal_filter=='NO TRADE' %}selected{% endif %}>İşlem Yok</option>
+        </select>
+      </div>
+      <div class="filter-select-group">
+        <label>Limit</label>
+        <select name="limit" onchange="this.form.submit()">
+          <option value="50"  {% if limit==50  %}selected{% endif %}>50</option>
+          <option value="100" {% if limit==100 %}selected{% endif %}>100</option>
+          <option value="200" {% if limit==200 %}selected{% endif %}>200</option>
+          <option value="500" {% if limit==500 %}selected{% endif %}>500</option>
+        </select>
+      </div>
+    </form>
+    <span class="badge bg-blue" style="margin-left:auto;font-size:.72rem">{{ signals|length }} kayıt</span>
+    <form method="post" action="/signals/resolve-now" style="margin-left:8px">
+      <button type="submit" class="btn btn-success" style="padding:6px 14px;font-size:.78rem" id="resolveBtn"
+              onclick="this.textContent='Kontrol ediliyor...';this.disabled=true;this.form.submit()">
+        Sonuçları Kontrol Et
+      </button>
+    </form>
+  </div>
+</div>
+
+<!-- ══════════ Mini Stats ══════════ -->
+{% set total     = signals|length %}
+{% set longs     = signals|selectattr('signal','eq','LONG')|list|length %}
+{% set shorts    = signals|selectattr('signal','eq','SHORT')|list|length %}
+{% set tp_hits   = signals|selectattr('outcome','eq','tp_hit')|list|length %}
+{% set sl_hits   = signals|selectattr('outcome','eq','sl_hit')|list|length %}
+{% set hyp_tp    = signals|selectattr('outcome','eq','hyp_tp')|list|length %}
+{% set hyp_sl    = signals|selectattr('outcome','eq','hyp_sl')|list|length %}
+{% set pending   = signals|selectattr('outcome','eq','pending')|list|length %}
+{% set hyp_pend  = signals|selectattr('outcome','eq','hyp_pending')|list|length %}
+{% set expired   = signals|selectattr('outcome','eq','expired')|list|length %}
+{% set resolved  = tp_hits + sl_hits %}
+{% set hyp_res   = hyp_tp + hyp_sl %}
+{% set winrate   = (tp_hits / resolved * 100) if resolved > 0 else 0 %}
+{% set hyp_rate  = (hyp_tp / hyp_res * 100) if hyp_res > 0 else 0 %}
+
+<div class="g g4" style="margin-bottom:14px">
+  <div class="card card-sm card-kpi-blue fade-up d1">
+    <div class="card-title">Toplam Sinyal</div>
+    <div class="kpi-sm c-blue">{{ total }}</div>
+    <div class="sub-text">
+      <span class="c-green">{{ longs }} AL</span> / <span class="c-red">{{ shorts }} SAT</span>
+      / <span class="c-muted">{{ total - longs - shorts }} YOK</span>
+    </div>
+  </div>
+  <div class="card card-sm card-kpi-green fade-up d2">
+    <div class="card-title">Gerçek Sinyal Sonuçları</div>
+    {% if resolved > 0 %}
+    <div class="kpi-sm {% if winrate >= 55 %}c-green{% elif winrate >= 40 %}c-gold{% else %}c-red{% endif %}">
+      %{{ "%.0f"|format(winrate) }}
+    </div>
+    <div class="sub-text">{{ tp_hits }} TP / {{ sl_hits }} SL — {{ resolved }} sonuç</div>
+    {% else %}
+    <div class="kpi-sm c-muted">—</div>
+    <div class="sub-text">Henüz AL/SAT sinyali yok</div>
+    {% endif %}
+  </div>
+  <div class="card card-sm card-kpi-purple fade-up d3">
+    <div class="card-title">Hipotetik (YOK sinyalleri)</div>
+    {% if hyp_res > 0 %}
+    <div class="kpi-sm {% if hyp_rate >= 55 %}c-green{% elif hyp_rate >= 40 %}c-gold{% else %}c-red{% endif %}">
+      %{{ "%.0f"|format(hyp_rate) }}
+    </div>
+    <div class="sub-text">
+      <span style="color:#6ee7b7">{{ hyp_tp }} ~TP</span> /
+      <span style="color:#fca5a5">{{ hyp_sl }} ~SL</span>
+      — Bot almasa da nereye giderdi
+    </div>
+    {% else %}
+    <div class="kpi-sm c-muted">{{ hyp_pend }}</div>
+    <div class="sub-text">YOK sinyali takipte (mum bazlı)</div>
+    {% endif %}
+  </div>
+  <div class="card card-sm card-kpi-gold fade-up d4">
+    <div class="card-title">Net R:R / Bekleyen</div>
+    {% set net_rr = namespace(val=0.0) %}
+    {% for row in signals %}
+      {% if row.realized_rr is not none and row.realized_rr != 0 %}
+        {% set net_rr.val = net_rr.val + row.realized_rr %}
+      {% endif %}
+    {% endfor %}
+    <div class="kpi-sm {% if net_rr.val > 0 %}c-green{% elif net_rr.val < 0 %}c-red{% else %}c-muted{% endif %}">
+      {% if net_rr.val != 0 %}{{ "%+.2f"|format(net_rr.val) }}R{% else %}—{% endif %}
+    </div>
+    <div class="sub-text">
+      <span class="c-gold">{{ pending + hyp_pend }} bekliyor</span> /
+      <span class="c-muted">{{ expired }} süresi doldu</span>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ Signals Table ══════════ -->
+<div class="card fade-up">
+  <div class="card-head">
+    <div>
+      <div class="sec-title">Sinyal Tablosu</div>
+      <div class="sec-sub">Filtrelenmiş analiz geçmişi</div>
+    </div>
+  </div>
+  <div class="tbl-wrap" style="max-height:68vh">
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Zaman</th>
+          <th>Kaynak</th>
+          <th>Sembol</th>
+          <th>TF</th>
+          <th>Sinyal</th>
+          <th>Kalite</th>
+          <th>Skor</th>
+          <th>RR</th>
+          <th>Fiyat</th>
+          <th>Giriş Bölgesi</th>
+          <th>SL</th>
+          <th>TP</th>
+          <th>Sonuç</th>
+          <th>Gerçek RR</th>
+          <th>Trend</th>
+          <th>Üst TF</th>
+          <th>Sweep</th>
+          <th>Sniper</th>
+          <th>Seans</th>
+          <th>Neden</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in signals %}
+        <tr>
+          <td class="mono c-muted">{{ row.id }}</td>
+          <td class="mono" style="font-size:.71rem;color:var(--muted2)">{{ row.created_at[:16] if row.created_at else '-' }}</td>
+          <td style="font-size:.74rem;color:var(--muted2)">{{ row.source }}</td>
+          <td style="font-weight:700;color:var(--text)">{{ row.symbol }}</td>
+          <td><span class="badge bg-muted">{{ row.timeframe }}</span></td>
+
+          <td>
+            {% if row.signal == 'LONG' %}<span class="badge bg-green">▲ AL</span>
+            {% elif row.signal == 'SHORT' %}<span class="badge bg-red">▼ SAT</span>
+            {% else %}<span class="badge bg-muted" style="font-size:.63rem">YOK</span>{% endif %}
+          </td>
+
+          <td>
+            {% if row.quality == 'A' %}<span class="badge bg-green" style="font-weight:800">A</span>
+            {% elif row.quality == 'B' %}<span class="badge bg-blue" style="font-weight:800">B</span>
+            {% elif row.quality == 'C' %}<span class="badge bg-gold" style="font-weight:800">C</span>
+            {% else %}<span class="badge bg-muted">{{ row.quality }}</span>{% endif %}
+          </td>
+
+          <td>
+            <div class="score-bar-wrap">
+              <span class="mono" style="color:var(--purple);min-width:24px">{{ row.setup_score }}</span>
+              <div class="score-bar">
+                <div class="score-fill" style="width:{{ row.setup_score }}%;background:{% if row.setup_score >= 80 %}var(--green){% elif row.setup_score >= 60 %}var(--blue){% else %}var(--gold){% endif %}"></div>
+              </div>
+            </div>
+          </td>
+
+          <td class="mono c-gold">{{ row.rr_ratio }}</td>
+          <td class="mono" style="font-size:.72rem">{{ "%.5f"|format(row.current_price) if row.current_price else '-' }}</td>
+
+          <td class="mono" style="font-size:.7rem">
+            {% if row.entry_low and row.entry_high %}
+              <span class="c-blue">{{ "%.5f"|format(row.entry_low) }}</span>
+              <span class="c-muted"> – </span>
+              <span class="c-blue">{{ "%.5f"|format(row.entry_high) }}</span>
+            {% else %}-{% endif %}
+          </td>
+
+          <td class="mono c-red" style="font-size:.72rem">{{ "%.5f"|format(row.stop_loss) if row.stop_loss else '-' }}</td>
+          <td class="mono c-green" style="font-size:.72rem">{{ "%.5f"|format(row.take_profit) if row.take_profit else '-' }}</td>
+
+          <td>
+            {% if row.outcome == 'tp_hit' %}
+              <span class="badge bg-green">✓ TP HIT</span>
+            {% elif row.outcome == 'sl_hit' %}
+              <span class="badge bg-red">✗ SL HIT</span>
+            {% elif row.outcome == 'hyp_tp' %}
+              <span class="badge" style="background:rgba(16,185,129,.06);color:#6ee7b7;border:1px solid rgba(16,185,129,.2)" title="Bot islem almadi ama fiyat TP seviyesine ulasti">~ TP'ye gitti</span>
+            {% elif row.outcome == 'hyp_sl' %}
+              <span class="badge" style="background:rgba(239,68,68,.06);color:#fca5a5;border:1px solid rgba(239,68,68,.2)" title="Bot islem almadi ama fiyat SL seviyesine ulasti">~ SL'ye gitti</span>
+            {% elif row.outcome == 'pending' %}
+              <span class="badge bg-gold">BEKLIYOR</span>
+            {% elif row.outcome == 'hyp_pending' %}
+              <span class="badge" style="background:rgba(245,158,11,.06);color:#fcd34d;border:1px solid rgba(245,158,11,.2)">~ Takipte</span>
+            {% elif row.outcome == 'expired' %}
+              <span class="badge bg-muted">SURESI DOLDU</span>
+            {% elif row.outcome == 'no_trade' %}
+              <span class="badge bg-muted">ISLEM YOK</span>
+            {% else %}
+              <span class="badge bg-muted">{{ row.outcome }}</span>
+            {% endif %}
+          </td>
+
+          <td class="mono {% if row.realized_rr is not none and row.realized_rr > 0 %}c-green{% elif row.realized_rr is not none and row.realized_rr < 0 %}c-red{% else %}c-muted{% endif %}">
+            {% if row.realized_rr is not none and row.realized_rr != 0 %}
+              {{ "%+.2f"|format(row.realized_rr) }}R
+            {% else %}—{% endif %}
+          </td>
+
+          <td style="font-size:.74rem;color:var(--text2)">{{ row.trend }}</td>
+          <td style="font-size:.74rem;color:var(--text2)">{{ row.higher_tf_trend }}</td>
+
+          <td style="font-size:.7rem;max-width:90px;overflow:hidden;text-overflow:ellipsis" title="{{ row.sweep_signal }}">
+            {% if row.sweep_signal and row.sweep_signal != 'Yok' and row.sweep_signal != 'NONE' %}
+              <span class="c-gold">✦ Var</span>
+            {% else %}<span class="c-muted">—</span>{% endif %}
+          </td>
+
+          <td style="font-size:.7rem">
+            {% if row.sniper_entry and row.sniper_entry != 'Yok' %}
+              <span class="c-green">✦ Var</span>
+            {% else %}<span class="c-muted">—</span>{% endif %}
+          </td>
+
+          <td style="font-size:.74rem;color:var(--muted2)">{{ row.session_name }}</td>
+
+          <td style="font-size:.7rem;max-width:260px;color:var(--muted2)">
+            {% if row.signal in ('LONG', 'SHORT') %}
+              {# Gerçekleşen sinyal: outcome notu göster #}
+              {% if row.outcome_note %}
+                <span title="{{ row.outcome_note }}">{{ row.outcome_note[:80] }}</span>
+              {% else %}
+                <span class="c-muted">Bekliyor...</span>
+              {% endif %}
+            {% else %}
+              {# YOK sinyali: neden işlem yapılmadığını göster #}
+              {% if row.no_trade_reasons %}
+                {% set reasons = row.no_trade_reasons | from_json %}
+                {% if reasons %}
+                  <div style="display:flex;flex-direction:column;gap:2px">
+                  {% for r in reasons[:3] %}
+                    <span style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.15);border-radius:4px;padding:1px 5px;font-size:.65rem;color:#f87171;white-space:nowrap">
+                      {{ r }}
+                    </span>
+                  {% endfor %}
+                  {% if reasons|length > 3 %}
+                    <span class="c-muted" style="font-size:.63rem">+{{ reasons|length - 3 }} daha...</span>
+                  {% endif %}
+                  </div>
+                {% else %}
+                  <span class="c-muted">{{ row.reason[:60] if row.reason else '—' }}</span>
+                {% endif %}
+              {% else %}
+                <span class="c-muted">{{ row.reason[:60] if row.reason else '—' }}</span>
+              {% endif %}
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endblock %}

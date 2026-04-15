@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% block title %}Backtest{% endblock %}
+{% block nav_backtest %}active{% endblock %}
+{% block page_title %}Backtest Sonuclari{% endblock %}
+
+{% block content %}
+<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:24px">
+  <!-- Yeni Backtest Formu -->
+  <div class="card" style="flex:1;min-width:320px;padding:20px">
+    <h3 style="margin-bottom:12px;font-size:15px;color:var(--gold)">Yeni Backtest Baslat</h3>
+    <form id="bt-form" style="display:flex;gap:10px;flex-wrap:wrap;align-items:end">
+      <div style="display:flex;flex-direction:column;gap:4px">
+        <label style="font-size:11px;color:var(--muted2)">Sembol</label>
+        <select id="bt-symbol" style="background:var(--bg);color:var(--text);border:1px solid var(--border);padding:8px 12px;border-radius:8px;font-size:13px">
+          {% for s in symbols %}<option value="{{s}}">{{s}}</option>{% endfor %}
+        </select>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:4px">
+        <label style="font-size:11px;color:var(--muted2)">Zaman Dilimi</label>
+        <select id="bt-tf" style="background:var(--bg);color:var(--text);border:1px solid var(--border);padding:8px 12px;border-radius:8px;font-size:13px">
+          {% for t in timeframes %}<option value="{{t}}"{% if t == "5min" %} selected{% endif %}>{{t}}</option>{% endfor %}
+        </select>
+      </div>
+      <button type="submit" id="bt-run" style="background:linear-gradient(135deg,var(--blue),var(--purple));color:#fff;border:none;padding:8px 20px;border-radius:8px;cursor:pointer;font-weight:600;font-size:13px">
+        Baslat
+      </button>
+      <span id="bt-status" style="font-size:12px;color:var(--muted2)"></span>
+    </form>
+  </div>
+</div>
+
+<!-- Backtest Gecmisi -->
+<div class="card" style="padding:20px">
+  <h3 style="margin-bottom:16px;font-size:15px">Gecmis Backtest Sonuclari</h3>
+  {% if results|length == 0 %}
+    <p style="color:var(--muted2);font-size:13px">Henuz backtest sonucu yok. Yukaridaki formu kullanarak bir backtest baslatin.</p>
+  {% else %}
+  <div style="overflow-x:auto">
+    <table style="width:100%;border-collapse:collapse;font-size:12px">
+      <thead>
+        <tr style="border-bottom:1px solid var(--border)">
+          <th style="text-align:left;padding:8px;color:var(--muted2)">Tarih</th>
+          <th style="text-align:left;padding:8px;color:var(--muted2)">Sembol</th>
+          <th style="text-align:left;padding:8px;color:var(--muted2)">TF</th>
+          <th style="text-align:center;padding:8px;color:var(--muted2)">Sinyaller</th>
+          <th style="text-align:center;padding:8px;color:var(--muted2)">W/L</th>
+          <th style="text-align:center;padding:8px;color:var(--muted2)">WR%</th>
+          <th style="text-align:center;padding:8px;color:var(--muted2)">Sharpe</th>
+          <th style="text-align:center;padding:8px;color:var(--muted2)">PF</th>
+          <th style="text-align:center;padding:8px;color:var(--muted2)">Max DD</th>
+          <th style="text-align:center;padding:8px;color:var(--muted2)">Expectancy</th>
+          <th style="padding:8px"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in results %}
+        <tr style="border-bottom:1px solid var(--border);transition:background .15s" onmouseover="this.style.background='rgba(59,130,246,.06)'" onmouseout="this.style.background='transparent'">
+          <td style="padding:8px;color:var(--text2)">{{ r.created_at[:16] }}</td>
+          <td style="padding:8px;font-weight:600">{{ r.symbol }}</td>
+          <td style="padding:8px;color:var(--muted2)">{{ r.timeframe }}</td>
+          <td style="text-align:center;padding:8px">{{ r.tested_signals }}</td>
+          <td style="text-align:center;padding:8px">
+            <span style="color:var(--green)">{{ r.wins }}</span> / <span style="color:var(--red)">{{ r.losses }}</span>
+          </td>
+          <td style="text-align:center;padding:8px">
+            <span style="color:{% if r.winrate >= 60 %}var(--green){% elif r.winrate >= 45 %}var(--gold){% else %}var(--red){% endif %};font-weight:600">
+              {{ r.winrate }}%
+            </span>
+          </td>
+          <td style="text-align:center;padding:8px">{{ r.sharpe_ratio or '-' }}</td>
+          <td style="text-align:center;padding:8px">{{ r.profit_factor or '-' }}</td>
+          <td style="text-align:center;padding:8px;color:var(--red)">{{ r.max_drawdown or '-' }}%</td>
+          <td style="text-align:center;padding:8px;font-weight:600;color:{% if r.expectancy > 0 %}var(--green){% else %}var(--red){% endif %}">
+            {{ r.expectancy }}R
+          </td>
+          <td style="padding:8px">
+            <a href="/backtest/{{ r.id }}" style="color:var(--blue);text-decoration:none;font-size:11px">Detay</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Backtest Detay Modal (AJAX ile doldurulur) -->
+<div id="bt-detail" style="display:none;margin-top:20px">
+  <div class="card" style="padding:20px">
+    <h3 id="bt-detail-title" style="margin-bottom:16px;font-size:15px;color:var(--gold)"></h3>
+    <img id="bt-chart-img" src="" alt="Backtest Chart" style="width:100%;border-radius:12px;margin-bottom:16px;display:none"/>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+document.getElementById('bt-form').addEventListener('submit', function(e) {
+  e.preventDefault();
+  var btn = document.getElementById('bt-run');
+  var status = document.getElementById('bt-status');
+  btn.disabled = true;
+  btn.textContent = 'Calisiyor...';
+  status.textContent = 'Backtest calistiriliyor, bu birkaç dakika surebilir...';
+
+  fetch('/api/run-backtest', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      symbol: document.getElementById('bt-symbol').value,
+      timeframe: document.getElementById('bt-tf').value
+    })
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    btn.disabled = false;
+    btn.textContent = 'Baslat';
+    if (data.error) {
+      status.textContent = 'Hata: ' + data.error;
+      status.style.color = 'var(--red)';
+    } else {
+      status.textContent = 'Tamamlandi! WR: ' + data.winrate + '% | Sharpe: ' + (data.sharpe_ratio||'-');
+      status.style.color = 'var(--green)';
+      setTimeout(function() { location.reload(); }, 1500);
+    }
+  })
+  .catch(function(err) {
+    btn.disabled = false;
+    btn.textContent = 'Baslat';
+    status.textContent = 'Istek hatasi';
+    status.style.color = 'var(--red)';
+  });
+});
+{% endblock %}

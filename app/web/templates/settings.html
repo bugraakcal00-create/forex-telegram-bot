@@ -1,0 +1,348 @@
+{% extends "base.html" %}
+{% block title %}Ayarlar{% endblock %}
+{% block nav_set %}active{% endblock %}
+{% block page_title %}Ayarlar{% endblock %}
+
+{% block extra_css %}
+/* ── Section header dividers ── */
+.settings-section-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 4px 0 16px;
+  font-size: .7rem;
+  font-weight: 700;
+  color: var(--muted2);
+  text-transform: uppercase;
+  letter-spacing: .1em;
+}
+.settings-section-head::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+/* ── Settings value row ── */
+.setting-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 9px 0;
+  border-bottom: 1px solid rgba(17,32,64,.6);
+}
+.setting-row:last-child { border-bottom: none; }
+.setting-key {
+  font-size: .79rem;
+  color: var(--muted2);
+  font-weight: 500;
+}
+.setting-val {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: .76rem;
+  color: var(--blue);
+  background: var(--blue-d);
+  border: 1px solid rgba(59,130,246,.15);
+  padding: 2px 9px;
+  border-radius: 6px;
+}
+
+/* ── Preset button styles ── */
+.preset-btn-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.preset-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,.03);
+  color: var(--text2);
+  font: inherit;
+  font-size: .83rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .18s ease;
+  text-align: left;
+  width: 100%;
+}
+
+.preset-btn:hover { border-color: var(--border2); background: rgba(255,255,255,.06); transform: translateX(3px); }
+.preset-btn.conservative:hover { border-color: var(--green); color: var(--green); background: var(--green-d); }
+.preset-btn.balanced:hover     { border-color: var(--blue);  color: var(--blue);  background: var(--blue-d);  }
+.preset-btn.aggressive:hover   { border-color: var(--red);   color: var(--red);   background: var(--red-d);   }
+
+.preset-meta {
+  font-size: .7rem;
+  font-weight: 400;
+  color: var(--muted2);
+}
+
+/* ── Subscriber pill ── */
+.sub-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 11px;
+  border-radius: 99px;
+  background: var(--blue-d);
+  border: 1px solid rgba(59,130,246,.2);
+  color: var(--blue);
+  font-size: .76rem;
+  font-weight: 600;
+  font-family: 'JetBrains Mono', monospace;
+  margin: 3px 4px 3px 0;
+}
+{% endblock %}
+
+
+{% block content %}
+
+<div class="g g3">
+
+  <!-- ══════ Col 1: Session + Alerts + Presets ══════ -->
+  <div style="display:flex;flex-direction:column;gap:14px">
+
+    <!-- Seans Filtresi -->
+    <div class="card fade-up d1">
+      <div class="settings-section-head">Seans Filtresi</div>
+      <form method="post" action="/settings/session-filter">
+        <div class="form-group">
+          <label class="form-label">İşlem Saati Kısıtlaması</label>
+          <select name="enabled">
+            <option value="1" {% if settings.get('session_filter_enabled','1')=='1' %}selected{% endif %}>
+              Açık — Londra + NY seanslarında
+            </option>
+            <option value="0" {% if settings.get('session_filter_enabled','1')=='0' %}selected{% endif %}>
+              Kapalı — 7/24 işlem yapılabilir
+            </option>
+          </select>
+        </div>
+        <button type="submit" class="btn btn-primary btn-w">
+          <span>💾</span> Kaydet
+        </button>
+      </form>
+    </div>
+
+    <!-- Alarm Eşikleri -->
+    <div class="card fade-up d2">
+      <div class="settings-section-head">Alarm Eşikleri</div>
+      <form method="post" action="/settings/alerts">
+        <div class="form-row" style="margin-bottom:12px">
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Min Kalite</label>
+            <select name="min_quality">
+              <option value="A" {% if settings.get('min_quality_for_alert','A')=='A' %}selected{% endif %}>A</option>
+              <option value="B" {% if settings.get('min_quality_for_alert','A')=='B' %}selected{% endif %}>B</option>
+              <option value="C" {% if settings.get('min_quality_for_alert','A')=='C' %}selected{% endif %}>C</option>
+            </select>
+          </div>
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Min Skor</label>
+            <input type="number" name="min_score"
+                   value="{{ settings.get('min_score_for_alert','80') }}"
+                   min="1" max="100"/>
+          </div>
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Min RR</label>
+            <input type="number" name="min_rr"
+                   value="{{ settings.get('min_rr_for_alert','2.0') }}"
+                   min="0.1" step="0.1"/>
+          </div>
+        </div>
+        <button type="submit" class="btn btn-primary btn-w">
+          <span>🔔</span> Alarm Ayarlarını Güncelle
+        </button>
+      </form>
+    </div>
+
+    <!-- Hazır Modlar -->
+    <div class="card fade-up d3">
+      <div class="settings-section-head">Hazır Profiller</div>
+      <div class="preset-btn-group">
+        <form method="post" action="/settings/preset">
+          <input type="hidden" name="mode" value="conservative"/>
+          <button type="submit" class="preset-btn conservative">
+            <span>🛡 Muhafazakâr</span>
+            <span class="preset-meta">A · Skor 88 · RR 2.4</span>
+          </button>
+        </form>
+        <form method="post" action="/settings/preset">
+          <input type="hidden" name="mode" value="balanced"/>
+          <button type="submit" class="preset-btn balanced">
+            <span>⚖ Dengeli</span>
+            <span class="preset-meta">A · Skor 82 · RR 2.1</span>
+          </button>
+        </form>
+        <form method="post" action="/settings/preset">
+          <input type="hidden" name="mode" value="aggressive"/>
+          <button type="submit" class="preset-btn aggressive">
+            <span>🔥 Agresif</span>
+            <span class="preset-meta">B · Skor 72 · RR 1.8</span>
+          </button>
+        </form>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ══════ Col 2: Watch Management ══════ -->
+  <div style="display:flex;flex-direction:column;gap:14px">
+
+    <!-- İzleme Ekle -->
+    <div class="card fade-up d1">
+      <div class="settings-section-head">İzleme Ekle</div>
+      <form method="post" action="/watch/add">
+        <div class="form-group">
+          <label class="form-label">Sohbet ID</label>
+          <input type="number" name="chat_id" placeholder="123456789" required/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Sembol</label>
+          <input type="text" name="symbol" placeholder="XAUUSD" required/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Zaman Dilimi</label>
+          <select name="timeframe">
+            <option value="1min">1 dk</option>
+            <option value="5min" selected>5 dk</option>
+            <option value="15min">15 dk</option>
+            <option value="30min">30 dk</option>
+            <option value="1h">1 saat</option>
+            <option value="4h">4 saat</option>
+          </select>
+        </div>
+        <button type="submit" class="btn btn-success btn-w">
+          <span>➕</span> İzlemeye Ekle
+        </button>
+      </form>
+    </div>
+
+    <!-- İzleme Sil -->
+    <div class="card fade-up d2">
+      <div class="settings-section-head">İzleme Sil</div>
+      <form method="post" action="/watch/remove">
+        <div class="form-group">
+          <label class="form-label">Sohbet ID</label>
+          <input type="number" name="chat_id" placeholder="123456789" required/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Sembol</label>
+          <input type="text" name="symbol" placeholder="XAUUSD" required/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Zaman Dilimi <span style="color:var(--muted);font-weight:400">(opsiyonel)</span></label>
+          <input type="text" name="timeframe" placeholder="5min"/>
+        </div>
+        <button type="submit" class="btn btn-danger btn-w">
+          <span>🗑</span> İzlemeyi Sil
+        </button>
+      </form>
+    </div>
+
+    <!-- Manuel İşlem Ekle -->
+    <div class="card fade-up d3">
+      <div class="settings-section-head">Manuel İşlem Ekle</div>
+      <form method="post" action="/trade/add">
+        <div class="form-group">
+          <label class="form-label">Sohbet ID</label>
+          <input type="number" name="chat_id" placeholder="123456789" required/>
+        </div>
+        <div class="form-row" style="margin-bottom:0">
+          <div class="form-group">
+            <label class="form-label">Sembol</label>
+            <input type="text" name="symbol" placeholder="XAUUSD" required/>
+          </div>
+          <div class="form-group">
+            <label class="form-label">TF</label>
+            <input type="text" name="timeframe" placeholder="5min" required/>
+          </div>
+          <div class="form-group">
+            <label class="form-label">RR</label>
+            <input type="number" name="rr" step="0.01" placeholder="2.1" required/>
+          </div>
+        </div>
+        <div class="form-group" style="margin-top:10px">
+          <label class="form-label">Sonuç</label>
+          <select name="result">
+            <option value="win">✅ Kazanç (Win)</option>
+            <option value="loss">❌ Zarar (Loss)</option>
+          </select>
+        </div>
+        <button type="submit" class="btn btn-primary btn-w">
+          <span>💾</span> İşlemi Kaydet
+        </button>
+      </form>
+    </div>
+
+  </div>
+
+  <!-- ══════ Col 3: Lists + Current Settings ══════ -->
+  <div style="display:flex;flex-direction:column;gap:14px">
+
+    <!-- Mevcut İzleme Listesi -->
+    <div class="card fade-up d1">
+      <div class="settings-section-head">Mevcut İzleme Listesi</div>
+      {% if watch_groups %}
+      <div class="tbl-wrap">
+        <table>
+          <thead>
+            <tr><th>Sohbet ID</th><th>İzlenen Çiftler</th></tr>
+          </thead>
+          <tbody>
+            {% for chat_id, items in watch_groups.items() %}
+            <tr>
+              <td class="mono c-muted">{{ chat_id }}</td>
+              <td>
+                {% for item in items %}
+                  <span class="badge bg-blue" style="margin:2px 3px 2px 0">
+                    {{ item.symbol }} {{ item.timeframe }}
+                  </span>
+                {% endfor %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+        <p class="c-muted" style="font-size:.82rem">İzleme listesi boş.</p>
+      {% endif %}
+    </div>
+
+    <!-- Günlük Aboneler -->
+    <div class="card fade-up d2">
+      <div class="settings-section-head">Günlük Aboneler</div>
+      {% if daily_subscribers %}
+        <div style="display:flex;flex-wrap:wrap;gap:0">
+          {% for sid in daily_subscribers %}
+            <span class="sub-pill">{{ sid }}</span>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="c-muted" style="font-size:.82rem">Henüz günlük abone yok.</p>
+      {% endif %}
+    </div>
+
+    <!-- Mevcut Ayarlar -->
+    <div class="card fade-up d3">
+      <div class="settings-section-head">Aktif Konfigürasyon</div>
+      <div style="display:flex;flex-direction:column;gap:0">
+        {% for key, val in settings.items() %}
+        <div class="setting-row">
+          <span class="setting-key">{{ key.replace('_',' ').title() }}</span>
+          <span class="setting-val">{{ val }}</span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+  </div>
+
+</div>
+{% endblock %}

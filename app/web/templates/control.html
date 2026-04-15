@@ -1,0 +1,622 @@
+{% extends "base.html" %}
+{% block title %}Kontrol Paneli{% endblock %}
+{% block nav_ctrl %}active{% endblock %}
+{% block page_title %}Kontrol Paneli{% endblock %}
+
+{% block extra_css %}
+/* ── Terminal ── */
+.terminal {
+  background: #03080f;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 18px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: .77rem;
+  line-height: 1.8;
+  min-height: 90px;
+  position: relative;
+  overflow: hidden;
+}
+
+.terminal::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, #3b82f6, #8b5cf6, #06b6d4);
+  border-radius: 12px 12px 0 0;
+}
+
+.terminal-dots {
+  display: flex;
+  gap: 5px;
+  margin-bottom: 12px;
+}
+.terminal-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+}
+.td-red    { background: #ef4444; }
+.td-gold   { background: #f59e0b; }
+.td-green  { background: #10b981; }
+
+.terminal .t-label   { color: var(--muted2); }
+.terminal .t-val     { color: var(--text2);  }
+.terminal .t-long    { color: var(--green);  font-weight: 700; }
+.terminal .t-short   { color: var(--red);    font-weight: 700; }
+.terminal .t-notrade { color: var(--gold);   font-weight: 700; }
+.terminal .t-price   { color: var(--blue);   }
+.terminal .t-score   { color: var(--purple); }
+
+/* ── Section divider ── */
+.section-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 26px 0 16px;
+  font-size: .7rem;
+  font-weight: 700;
+  color: var(--muted2);
+  text-transform: uppercase;
+  letter-spacing: .1em;
+}
+.section-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+/* ── Status chips ── */
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 14px;
+  border-radius: 9px;
+  font-size: .79rem;
+  font-weight: 600;
+}
+.chip-on  { background: var(--green-d); color: var(--green); border: 1px solid rgba(16,185,129,.2); }
+.chip-off { background: var(--red-d);   color: var(--red);   border: 1px solid rgba(239,68,68,.2); }
+
+/* ── Spinner ── */
+.spinner {
+  display: none;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255,255,255,.12);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin .65s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Danger zone ── */
+.danger-zone {
+  border: 1px solid rgba(239,68,68,.25);
+  border-radius: 14px;
+  padding: 20px;
+  background: rgba(239,68,68,.04);
+  position: relative;
+  overflow: hidden;
+}
+.danger-zone::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--red), transparent);
+}
+
+.danger-label {
+  font-size: .72rem;
+  font-weight: 700;
+  color: var(--red);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+/* ── Config badge ── */
+.config-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(17,32,64,.6);
+}
+.config-row:last-child { border-bottom: none; }
+
+/* ── Stat counter box ── */
+.stat-box {
+  background: var(--card2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  text-align: center;
+  transition: border-color .2s, transform .2s;
+}
+.stat-box:hover { border-color: var(--border2); transform: translateY(-1px); }
+.stat-label { font-size: .7rem; color: var(--muted2); margin-bottom: 6px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+{% endblock %}
+
+
+{% block content %}
+
+<!-- ══════════ BÖLÜM 1: Anlık Analiz ══════════ -->
+<div class="section-divider">📡 Anlık Piyasa Analizi</div>
+
+<div class="g g2">
+
+  <!-- Analiz Formu -->
+  <div class="card fade-up d1">
+    <div class="card-head">
+      <div>
+        <div class="card-title">Sembol & Zaman Dilimi</div>
+        <div class="sec-sub" style="margin-top:2px">Gerçek zamanlı SMC analizi başlat</div>
+      </div>
+    </div>
+
+    <div class="g2" style="gap:10px;margin-bottom:14px">
+      <div class="form-group" style="margin:0">
+        <label class="form-label">Sembol</label>
+        <select id="analyzeSymbol">
+          <option value="XAUUSD">XAU/USD — Altın</option>
+          <option value="EURUSD">EUR/USD</option>
+          <option value="GBPUSD">GBP/USD</option>
+          <option value="USDJPY">USD/JPY</option>
+        </select>
+      </div>
+      <div class="form-group" style="margin:0">
+        <label class="form-label">Zaman Dilimi</label>
+        <select id="analyzeTf">
+          <option value="1min">1 Dakika</option>
+          <option value="5min" selected>5 Dakika</option>
+          <option value="15min">15 Dakika</option>
+          <option value="30min">30 Dakika</option>
+          <option value="1h">1 Saat</option>
+          <option value="4h">4 Saat</option>
+        </select>
+      </div>
+    </div>
+
+    <button id="analyzeBtn" class="btn btn-primary btn-w" onclick="runAnalysis()" style="height:42px">
+      <span class="spinner" id="analyzeSpinner"></span>
+      <span id="analyzeBtnText">⚡ Analiz Et</span>
+    </button>
+
+    <div id="analyzeError"
+         style="display:none;margin-top:12px;padding:11px 14px;
+                background:var(--red-d);color:var(--red);
+                border:1px solid rgba(239,68,68,.2);
+                border-radius:9px;font-size:.8rem">
+    </div>
+  </div>
+
+  <!-- Sonuç Terminali -->
+  <div class="card fade-up d2">
+    <div class="card-head">
+      <div class="card-title">Analiz Sonucu</div>
+      <span class="badge bg-muted" id="analyzeStatusBadge">Bekleniyor</span>
+    </div>
+    <div class="terminal" id="analyzeResult">
+      <div class="terminal-dots">
+        <div class="terminal-dot td-red"></div>
+        <div class="terminal-dot td-gold"></div>
+        <div class="terminal-dot td-green"></div>
+      </div>
+      <span class="t-label">» Bir sembol ve zaman dilimi seçip "Analiz Et" butonuna tıklayın.</span>
+    </div>
+  </div>
+
+</div>
+
+<!-- Detaylı Sonuç Panel -->
+<div id="analyzeDetails" style="display:none;margin-top:14px">
+  <div class="card">
+    <div class="card-head">
+      <div>
+        <div class="card-title">Detaylı Sinyal Bilgileri</div>
+        <div class="sec-sub" style="margin-top:2px">SMC yapıları · Seviyeleri · Bölgeler</div>
+      </div>
+    </div>
+    <div class="g" style="grid-template-columns:repeat(3,1fr);gap:12px" id="analyzeDetailGrid"></div>
+  </div>
+</div>
+
+
+<!-- ══════════ BÖLÜM 2: Bot Durumu ══════════ -->
+<div class="section-divider">🤖 Bot Durumu & Hızlı Kontrol</div>
+
+<div class="g g3">
+
+  <!-- Oturum Filtresi -->
+  <div class="card fade-up d1">
+    <div class="card-head">
+      <div class="card-title">Oturum Filtresi</div>
+    </div>
+    <div style="margin-bottom:14px">
+      <span class="status-chip {% if config.session_filter_enabled %}chip-on{% else %}chip-off{% endif %}">
+        {% if config.session_filter_enabled %}
+          ✓ Aktif — Yalnızca açık oturumlarda
+        {% else %}
+          ✗ Pasif — Her saatte işlem yapılabilir
+        {% endif %}
+      </span>
+    </div>
+    <div style="display:flex;gap:8px">
+      <form method="post" action="/settings/session-filter" style="flex:1">
+        <input type="hidden" name="enabled" value="1">
+        <button class="btn btn-success btn-w" style="font-size:.78rem">Aktifleştir</button>
+      </form>
+      <form method="post" action="/settings/session-filter" style="flex:1">
+        <input type="hidden" name="enabled" value="0">
+        <button class="btn btn-ghost btn-w" style="font-size:.78rem">Pasifleştir</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Ultra Seçici Mod -->
+  <div class="card fade-up d2">
+    <div class="card-head">
+      <div class="card-title">Ultra Seçici Mod</div>
+    </div>
+    <div style="margin-bottom:14px">
+      <span class="status-chip {% if config.ultra_selective_mode %}chip-on{% else %}chip-off{% endif %}">
+        {% if config.ultra_selective_mode %}
+          ✓ Aktif — Yalnızca A kalite sinyaller
+        {% else %}
+          ✗ Pasif — B ve üzeri kabul ediliyor
+        {% endif %}
+      </span>
+    </div>
+    <div class="terminal" style="padding:12px 14px;min-height:auto;font-size:.72rem">
+      <div class="terminal-dots" style="margin-bottom:8px">
+        <div class="terminal-dot td-red"></div>
+        <div class="terminal-dot td-gold"></div>
+        <div class="terminal-dot td-green"></div>
+      </div>
+      <span class="t-label">ULTRA_SELECTIVE = </span>
+      <span class="t-val">{{ 'true' if config.ultra_selective_mode else 'false' }}</span><br>
+      <span class="t-label">Değiştirmek için .env dosyasını düzenleyin</span>
+    </div>
+  </div>
+
+  <!-- Haber Kilidi -->
+  <div class="card fade-up d3">
+    <div class="card-head">
+      <div class="card-title">Haber Kilidi</div>
+    </div>
+    <div style="margin-bottom:14px">
+      <span class="status-chip chip-on">
+        ⏱ {{ config.news_lock_minutes }} dakika kilitli
+      </span>
+    </div>
+    <div class="terminal" style="padding:12px 14px;min-height:auto;font-size:.72rem">
+      <div class="terminal-dots" style="margin-bottom:8px">
+        <div class="terminal-dot td-red"></div>
+        <div class="terminal-dot td-gold"></div>
+        <div class="terminal-dot td-green"></div>
+      </div>
+      <span class="t-label">NEWS_LOCK_MINUTES = </span>
+      <span class="t-val">{{ config.news_lock_minutes }}</span><br>
+      <span class="t-label">Yüksek etkili haberden önce/sonra<br>işlem otomatik durdurulur.</span>
+    </div>
+  </div>
+
+</div>
+
+
+<!-- ══════════ BÖLÜM 3: Alarm Eşikleri ══════════ -->
+<div class="section-divider">🔔 Alarm Eşikleri</div>
+
+<div class="card fade-up">
+  <div class="card-head">
+    <div>
+      <div class="card-title">Sinyal Filtreleme Kriterleri</div>
+      <div class="sec-sub" style="margin-top:2px">Kalite: <b class="c-blue">{{ config.min_quality }}</b> &nbsp;|&nbsp; Skor: <b class="c-blue">{{ config.min_score }}</b> &nbsp;|&nbsp; R/R: <b class="c-blue">{{ config.min_rr }}</b></div>
+    </div>
+  </div>
+
+  <form method="post" action="/settings/alerts">
+    <div class="form-row">
+      <div class="form-group" style="margin:0">
+        <label class="form-label">Min. Kalite</label>
+        <select name="min_quality">
+          {% for q in ['A', 'B', 'C', 'D'] %}
+          <option value="{{ q }}" {% if q == config.min_quality %}selected{% endif %}>{{ q }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group" style="margin:0">
+        <label class="form-label">Min. Skor (1–100)</label>
+        <input type="number" name="min_score" value="{{ config.min_score }}" min="1" max="100">
+      </div>
+      <div class="form-group" style="margin:0">
+        <label class="form-label">Min. R/R Oranı</label>
+        <input type="number" name="min_rr" value="{{ config.min_rr }}" step="0.1" min="0.1" max="10">
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap;align-items:center">
+      <button type="submit" class="btn btn-primary" style="padding:9px 22px">
+        💾 Kaydet
+      </button>
+
+      <span style="color:var(--muted2);font-size:.73rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em">
+        Hazır Profiller:
+      </span>
+
+      <form method="post" action="/settings/preset" style="display:inline">
+        <input type="hidden" name="mode" value="conservative">
+        <button class="btn btn-ghost" style="font-size:.78rem">🛡 Muhafazakâr</button>
+      </form>
+      <form method="post" action="/settings/preset" style="display:inline">
+        <input type="hidden" name="mode" value="balanced">
+        <button class="btn btn-ghost" style="font-size:.78rem">⚖ Dengeli</button>
+      </form>
+      <form method="post" action="/settings/preset" style="display:inline">
+        <input type="hidden" name="mode" value="aggressive">
+        <button class="btn btn-ghost" style="font-size:.78rem">⚡ Agresif</button>
+      </form>
+    </div>
+  </form>
+</div>
+
+
+<!-- ══════════ BÖLÜM 4: Veri Yönetimi ══════════ -->
+<div class="section-divider">🗄 Veri Yönetimi</div>
+
+<div class="g g2">
+
+  <!-- Kayıt Sayıları -->
+  <div class="card fade-up d1">
+    <div class="card-head">
+      <div class="card-title">Veritabanı Özeti</div>
+    </div>
+    <div class="g g2" style="gap:12px">
+      <div class="stat-box">
+        <div class="stat-label">Sinyal Kayıtları</div>
+        <div class="kpi-sm c-blue">{{ record_counts.signal_logs }}</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">İşlem Kayıtları</div>
+        <div class="kpi-sm c-green">{{ record_counts.trades }}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tehlikeli Bölge -->
+  <div class="danger-zone fade-up d2">
+    <div class="danger-label">
+      <span>⚠</span> Tehlikeli Bölge — Geri Alınamaz İşlemler
+    </div>
+    <div style="display:flex;flex-direction:column;gap:9px">
+
+      <form method="post" action="/control/reset-signals"
+            onsubmit="return confirm('{{ record_counts.signal_logs }} sinyal kaydı silinecek. Onaylıyor musunuz?')">
+        <button class="btn btn-ghost btn-w" style="font-size:.8rem;justify-content:space-between">
+          <span>🔄 Sinyalleri Sıfırla</span>
+          <span class="badge bg-muted">{{ record_counts.signal_logs }} kayıt</span>
+        </button>
+      </form>
+
+      <form method="post" action="/control/reset-trades"
+            onsubmit="return confirm('{{ record_counts.trades }} işlem kaydı silinecek. Onaylıyor musunuz?')">
+        <button class="btn btn-ghost btn-w" style="font-size:.8rem;justify-content:space-between">
+          <span>🔄 İşlemleri Sıfırla</span>
+          <span class="badge bg-muted">{{ record_counts.trades }} kayıt</span>
+        </button>
+      </form>
+
+      <form method="post" action="/control/reset-all"
+            onsubmit="return confirm('TÜM sinyal ve işlem verileri silinecek! Bu işlem geri alınamaz. Devam etmek istiyor musunuz?')">
+        <button class="btn btn-danger btn-w" style="font-size:.8rem;justify-content:space-between">
+          <span>🗑 Tüm Veriyi Sıfırla</span>
+          <span class="badge" style="background:rgba(239,68,68,.2);color:var(--red);border:1px solid rgba(239,68,68,.2)">
+            {{ record_counts.signal_logs + record_counts.trades }} kayıt
+          </span>
+        </button>
+      </form>
+
+    </div>
+  </div>
+
+</div>
+
+{% endblock %}
+
+
+{% block extra_js %}
+async function runAnalysis() {
+  const btn       = document.getElementById('analyzeBtn');
+  const spinner   = document.getElementById('analyzeSpinner');
+  const btnText   = document.getElementById('analyzeBtnText');
+  const resultEl  = document.getElementById('analyzeResult');
+  const errEl     = document.getElementById('analyzeError');
+  const detailEl  = document.getElementById('analyzeDetails');
+  const gridEl    = document.getElementById('analyzeDetailGrid');
+  const statusBdg = document.getElementById('analyzeStatusBadge');
+
+  const symbol    = document.getElementById('analyzeSymbol').value;
+  const timeframe = document.getElementById('analyzeTf').value;
+
+  btn.disabled = true;
+  spinner.style.display = 'block';
+  btnText.textContent = 'Analiz ediliyor...';
+  errEl.style.display = 'none';
+  detailEl.style.display = 'none';
+  statusBdg.textContent = '⏳ İşleniyor';
+  statusBdg.className = 'badge bg-gold';
+
+  resultEl.innerHTML = `
+    <div class="terminal-dots">
+      <div class="terminal-dot td-red"></div>
+      <div class="terminal-dot td-gold"></div>
+      <div class="terminal-dot td-green"></div>
+    </div>
+    <span class="t-label">» Piyasa verisi çekiliyor ve SMC analizi yapılıyor...</span>
+  `;
+
+  try {
+    const resp = await fetch('/api/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ symbol, timeframe }),
+    });
+
+    const data = await resp.json();
+
+    if (!resp.ok || data.error) {
+      errEl.textContent = data.error || 'Sunucu hatası oluştu.';
+      errEl.style.display = 'block';
+      resultEl.innerHTML = `
+        <div class="terminal-dots">
+          <div class="terminal-dot td-red"></div>
+          <div class="terminal-dot td-gold"></div>
+          <div class="terminal-dot td-green"></div>
+        </div>
+        <span class="t-label">» Analiz başarısız.</span>
+      `;
+      statusBdg.textContent = '✗ Hata';
+      statusBdg.className = 'badge bg-red';
+      return;
+    }
+
+    /* ── Özet terminal çıktısı ── */
+    const sig    = data.signal || 'NO TRADE';
+    const sigCls = sig === 'LONG' ? 't-long' : sig === 'SHORT' ? 't-short' : 't-notrade';
+
+    const fmt     = (v, dec = 2)  => (v !== null && v !== undefined) ? Number(v).toFixed(dec) : '—';
+    const fmtList = (arr)          => arr && arr.length ? arr.map(v => Number(v).toFixed(2)).join(', ') : '—';
+
+    const pdZone = data.premium_discount && data.premium_discount.zone ? data.premium_discount.zone : null;
+    const pdIcon = pdZone === 'PREMIUM' ? '🔴' : pdZone === 'DISCOUNT' ? '🟢' : null;
+    const choch  = data.choch && data.choch.detected ? `⚡ ${data.choch.type || ''} @ ${fmt(data.choch.price, 3)}` : '—';
+    const disp   = data.displacement && data.displacement.detected
+                 ? (data.displacement.direction === 'bullish' ? '▲ Yukarı' : '▼ Aşağı') : '—';
+    const ote    = data.ote_zone && data.ote_zone.valid
+                 ? `${fmt(data.ote_zone.ote_low, 3)} – ${fmt(data.ote_zone.ote_high, 3)}` : '—';
+    const eqH    = data.equal_highs && data.equal_highs.length ? data.equal_highs.slice(0,3).map(v => fmt(v,3)).join(', ') : '—';
+    const eqL    = data.equal_lows  && data.equal_lows.length  ? data.equal_lows.slice(0,3).map(v => fmt(v,3)).join(', ') : '—';
+
+    resultEl.innerHTML = `
+<div class="terminal-dots">
+  <div class="terminal-dot td-red"></div>
+  <div class="terminal-dot td-gold"></div>
+  <div class="terminal-dot td-green"></div>
+</div>
+<span class="t-label">Sembol      : </span><span class="t-val">${data.symbol} (${data.timeframe})</span>
+<span class="t-label">Sinyal      : </span><span class="${sigCls}">${sig}</span>
+<span class="t-label">Kalite      : </span><span class="t-score">${data.quality || '—'} &nbsp;|&nbsp; Skor: ${data.setup_score ?? '—'}</span>
+<span class="t-label">R/R Oranı   : </span><span class="t-val">${fmt(data.rr_ratio)}</span>
+<span class="t-label">Fiyat       : </span><span class="t-price">${fmt(data.current_price, 3)}</span>
+<span class="t-label">Giriş Bölg. : </span><span class="t-price">${Array.isArray(data.entry_zone) ? data.entry_zone.map(v => Number(v).toFixed(3)).join(' – ') : '—'}</span>
+<span class="t-label">Stop Loss   : </span><span style="color:var(--red)">${fmt(data.stop_loss, 3)}</span>
+<span class="t-label">TP 1        : </span><span style="color:var(--green)">${fmt(data.take_profit, 3)}</span>
+<span class="t-label">TP 2        : </span><span style="color:var(--green)">${fmt(data.take_profit_2, 3)}</span>
+<span class="t-label">Trend (TF)  : </span><span class="t-val">${data.trend || '—'}</span>
+<span class="t-label">HTF Trend   : </span><span class="t-val">${data.higher_tf_trend || '—'}</span>
+<span class="t-label">Rejim       : </span><span class="t-val">${data.regime || '—'}</span>
+<span class="t-label">RSI         : </span><span class="t-val">${fmt(data.rsi)}</span>
+<span class="t-label">ATR         : </span><span class="t-val">${fmt(data.atr, 3)}</span>
+<span class="t-label">MACD Hist   : </span><span class="t-val">${fmt(data.macd_hist, 4)}</span>
+<span class="t-label">P/D Bölgesi : </span><span class="t-val">${pdIcon ? pdIcon + ' ' + pdZone : '—'}</span>
+<span class="t-label">CHoCH       : </span><span style="color:#f97316">${choch}</span>
+<span class="t-label">Displacement: </span><span class="t-val">${disp}</span>
+<span class="t-label">OTE Bölgesi : </span><span style="color:var(--gold)">${ote}</span>
+<span class="t-label">Eşit Yüksek : </span><span class="t-val">${eqH}</span>
+<span class="t-label">Eşit Düşük  : </span><span class="t-val">${eqL}</span>
+<span class="t-label">Süpürme     : </span><span class="t-val">${data.sweep_signal || '—'}</span>
+<span class="t-label">Sniper Giriş: </span><span class="t-val">${data.sniper_entry || '—'}</span>
+<span class="t-label">Sebep       : </span><span class="t-val">${data.reason || '—'}</span>`;
+
+    if (data.no_trade_reasons && data.no_trade_reasons.length > 0) {
+      resultEl.innerHTML += `\n<span class="t-label">İşlem Dışı  : </span><span style="color:var(--gold)">${data.no_trade_reasons.join(', ')}</span>`;
+    }
+
+    /* ── Status badge ── */
+    statusBdg.textContent = sig === 'LONG' ? '▲ AL' : sig === 'SHORT' ? '▼ SAT' : '— Sinyal Yok';
+    statusBdg.className = 'badge ' + (sig === 'LONG' ? 'bg-green' : sig === 'SHORT' ? 'bg-red' : 'bg-gold');
+
+    /* ── Detay kartları ── */
+    const obHtml = (data.order_blocks && data.order_blocks.length)
+      ? data.order_blocks.map(ob => {
+          const tag = ob.broken ? ' <span style="color:var(--red);font-size:.62rem">[KIRILI]</span>' : '';
+          return `${ob.type}${tag}: ${Number(ob.bottom).toFixed(2)} – ${Number(ob.top).toFixed(2)}`;
+        }).join('<br>')
+      : 'Yok';
+
+    const fvgHtml = (data.fvg_zones && data.fvg_zones.length)
+      ? data.fvg_zones.filter(f => !f.filled).map(f =>
+          `${f.type}: ${Number(f.bottom).toFixed(2)} – ${Number(f.top).toFixed(2)}`
+        ).join('<br>') || 'Yok'
+      : 'Yok';
+
+    const bbHtml = (data.breaker_blocks && data.breaker_blocks.length)
+      ? data.breaker_blocks.map(b =>
+          `${b.type}: ${Number(b.bottom).toFixed(2)} – ${Number(b.top).toFixed(2)}`
+        ).join('<br>')
+      : 'Yok';
+
+    const ifvgHtml = (data.ifvg_zones && data.ifvg_zones.length)
+      ? data.ifvg_zones.map(f =>
+          `${f.type}: ${Number(f.bottom).toFixed(2)} – ${Number(f.top).toFixed(2)}`
+        ).join('<br>')
+      : 'Yok';
+
+    const detailCards = [
+      { title: 'Destek Seviyeleri',    value: fmtList(data.support),    color: 'var(--green)'  },
+      { title: 'Direnç Seviyeleri',    value: fmtList(data.resistance), color: 'var(--red)'    },
+      { title: 'BB Üst / Orta / Alt',  value: `${fmt(data.bb_upper,2)} / ${fmt(data.bb_mid,2)} / ${fmt(data.bb_lower,2)}`, color: 'var(--blue)' },
+      { title: 'Order Blocks',         value: obHtml,                   color: 'var(--purple)' },
+      { title: 'FVG Bölgeleri (Açık)', value: fvgHtml,                  color: 'var(--gold)'   },
+      { title: 'Breaker Blocks',       value: bbHtml,                   color: 'var(--orange)' },
+      { title: 'iFVG (Inversion FVG)', value: ifvgHtml,                 color: '#a78bfa'       },
+      { title: 'OTE / CHoCH / P-D',
+        value: `OTE: ${ote}<br>CHoCH: ${choch}<br>P/D: ${pdIcon ? pdIcon + ' ' + pdZone : '—'}`,
+        color: 'var(--gold)' },
+      { title: 'Kalite Özeti',
+        value: `${data.quality || '—'} &nbsp;&nbsp; Skor: ${data.setup_score ?? '—'}`,
+        color: 'var(--purple)' },
+    ];
+
+    gridEl.innerHTML = detailCards.map(c => `
+      <div style="background:rgba(3,8,15,.7);border:1px solid var(--border);border-radius:12px;padding:14px;transition:border-color .2s"
+           onmouseover="this.style.borderColor='var(--border2)'"
+           onmouseout="this.style.borderColor='var(--border)'">
+        <div style="font-size:.66rem;color:var(--muted2);font-weight:700;text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px">
+          ${c.title}
+        </div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:.76rem;color:${c.color};line-height:1.75">
+          ${c.value}
+        </div>
+      </div>
+    `).join('');
+
+    detailEl.style.display = 'block';
+
+  } catch (e) {
+    errEl.textContent = 'Bağlantı hatası: ' + e.message;
+    errEl.style.display = 'block';
+    resultEl.innerHTML = `
+      <div class="terminal-dots">
+        <div class="terminal-dot td-red"></div>
+        <div class="terminal-dot td-gold"></div>
+        <div class="terminal-dot td-green"></div>
+      </div>
+      <span class="t-label">» Analiz başarısız.</span>
+    `;
+    statusBdg.textContent = '✗ Hata';
+    statusBdg.className = 'badge bg-red';
+  } finally {
+    btn.disabled = false;
+    spinner.style.display = 'none';
+    btnText.textContent = '⚡ Analiz Et';
+  }
+}
+{% endblock %}

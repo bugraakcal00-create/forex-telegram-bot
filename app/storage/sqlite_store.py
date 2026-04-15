@@ -88,11 +88,48 @@ class BotRepository:
                     updated_at TEXT NOT NULL
                 );
 
+                CREATE TABLE IF NOT EXISTS equity_snapshots (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    balance REAL NOT NULL,
+                    equity REAL NOT NULL,
+                    drawdown_pct REAL NOT NULL DEFAULT 0.0,
+                    open_positions INTEGER NOT NULL DEFAULT 0,
+                    note TEXT,
+                    created_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS backtest_results (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    symbol TEXT NOT NULL,
+                    timeframe TEXT NOT NULL,
+                    tested_signals INTEGER NOT NULL,
+                    wins INTEGER NOT NULL,
+                    losses INTEGER NOT NULL,
+                    no_result INTEGER NOT NULL DEFAULT 0,
+                    winrate REAL NOT NULL,
+                    avg_rr REAL NOT NULL,
+                    expectancy REAL NOT NULL,
+                    sharpe_ratio REAL,
+                    profit_factor REAL,
+                    max_drawdown REAL,
+                    max_consecutive_losses INTEGER,
+                    monthly_breakdown TEXT,
+                    equity_curve TEXT,
+                    trade_log TEXT,
+                    created_at TEXT NOT NULL
+                );
+
                 CREATE INDEX IF NOT EXISTS idx_trades_chat_created
                 ON trades(chat_id, created_at);
 
                 CREATE INDEX IF NOT EXISTS idx_signals_created
                 ON signal_logs(created_at);
+
+                CREATE INDEX IF NOT EXISTS idx_equity_created
+                ON equity_snapshots(created_at);
+
+                CREATE INDEX IF NOT EXISTS idx_backtest_created
+                ON backtest_results(created_at);
                 """
             )
 
@@ -400,15 +437,23 @@ class BotRepository:
         stop_loss: float | None = None,
         take_profit: float | None = None,
     ) -> int:
-        outcome = "pending" if signal in {"LONG", "SHORT"} else "no_trade"
-        if signal not in {"LONG", "SHORT"}:
-            realized_rr = 0.0
-            resolved_at = datetime.now().isoformat(timespec="seconds")
-            outcome_note = "Sinyal islem disi"
-        else:
+        has_levels = stop_loss is not None and take_profit is not None
+        if signal in {"LONG", "SHORT"}:
+            outcome = "pending"
             realized_rr = None
             resolved_at = None
             outcome_note = None
+        elif has_levels:
+            # YOK sinyali ama seviyeleri var → hipotetik takip
+            outcome = "hyp_pending"
+            realized_rr = None
+            resolved_at = None
+            outcome_note = None
+        else:
+            outcome = "no_trade"
+            realized_rr = 0.0
+            resolved_at = datetime.now().isoformat(timespec="seconds")
+            outcome_note = "Sinyal islem disi"
 
         with self._connect() as conn:
             cursor = conn.execute(
@@ -454,6 +499,44 @@ class BotRepository:
             )
             return int(cursor.lastrowid)
 
+    def get_signal_logs_detail(self, limit: int = 200, signal_filter: str = "") -> list[dict[str, Any]]:
+        query = """
+            SELECT id, source, symbol, timeframe, signal, quality, setup_score, rr_ratio,
+                   current_price, trend, higher_tf_trend, sweep_signal, sniper_entry, reason,
+                   no_trade_reasons, session_name, is_session_open, had_high_impact_event,
+                   entry_low, entry_high, stop_loss, take_profit,
+                   outcome, realized_rr, outcome_note, resolved_at, created_at
+            FROM signal_logs
+        """
+        params: list[Any] = []
+        if signal_filter and signal_filter != "ALL":
+            query += " WHERE signal = ?"
+            params.append(signal_filter)
+        query += " ORDER BY id DESC LIMIT ?"
+        params.append(limit)
+        with self._connect() as conn:
+            rows = conn.execute(query, params).fetchall()
+        return [dict(row) for row in rows]
+
+    def get_labeled_signal_logs(self, limit: int = 2000) -> list[dict[str, Any]]:
+        """ML egitimi icin resolved (tp_hit/sl_hit/hyp_tp/hyp_sl) sinyal kayitlarini dondurur."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT id, source, symbol, timeframe, signal, quality, setup_score, rr_ratio,
+                       current_price, trend, higher_tf_trend, sweep_signal, sniper_entry, reason,
+                       no_trade_reasons, session_name, is_session_open, had_high_impact_event,
+                       entry_low, entry_high, stop_loss, take_profit,
+                       outcome, realized_rr, outcome_note, resolved_at, created_at
+                FROM signal_logs
+                WHERE outcome IN ('tp_hit', 'sl_hit', 'hyp_tp', 'hyp_sl')
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
     def get_recent_signal_logs(self, limit: int = 50) -> list[dict[str, Any]]:
         with self._connect() as conn:
             rows = conn.execute(
@@ -472,9 +555,11 @@ class BotRepository:
         with self._connect() as conn:
             rows = conn.execute(
                 """
-                SELECT id, symbol, timeframe, signal, rr_ratio, current_price, stop_loss, take_profit, created_at
+                SELECT id, symbol, timeframe, signal, rr_ratio, current_price, stop_loss, take_profit, outcome, created_at
                 FROM signal_logs
-                WHERE outcome = 'pending'
+                WHERE outcome IN ('pending', 'hyp_pending')
+                  AND stop_loss IS NOT NULL
+                  AND take_profit IS NOT NULL
                 ORDER BY id DESC
                 LIMIT ?
                 """,
@@ -586,7 +671,11 @@ class BotRepository:
                 SELECT
                     SUM(CASE WHEN outcome='tp_hit' THEN 1 ELSE 0 END) AS tp_hit,
                     SUM(CASE WHEN outcome='sl_hit' THEN 1 ELSE 0 END) AS sl_hit,
-                    SUM(CASE WHEN outcome='pending' THEN 1 ELSE 0 END) AS pending
+                    SUM(CASE WHEN outcome='pending' THEN 1 ELSE 0 END) AS pending,
+                    SUM(CASE WHEN outcome='expired' THEN 1 ELSE 0 END) AS expired,
+                    SUM(CASE WHEN outcome='hyp_tp' THEN 1 ELSE 0 END) AS hyp_tp,
+                    SUM(CASE WHEN outcome='hyp_sl' THEN 1 ELSE 0 END) AS hyp_sl,
+                    SUM(CASE WHEN outcome='hyp_pending' THEN 1 ELSE 0 END) AS hyp_pending
                 FROM signal_logs
                 WHERE created_at >= datetime('now', '-7 day')
                 """
@@ -607,6 +696,10 @@ class BotRepository:
             "tp_hit": int(outcome_row["tp_hit"] or 0),
             "sl_hit": int(outcome_row["sl_hit"] or 0),
             "pending": int(outcome_row["pending"] or 0),
+            "expired": int(outcome_row["expired"] or 0),
+            "hyp_tp": int(outcome_row["hyp_tp"] or 0),
+            "hyp_sl": int(outcome_row["hyp_sl"] or 0),
+            "hyp_pending": int(outcome_row["hyp_pending"] or 0),
         }
 
     def get_trade_series(self, days: int = 14) -> list[dict[str, Any]]:
@@ -679,3 +772,150 @@ class BotRepository:
             }
             for r in rows
         ]
+
+    # ── Veri sıfırlama ────────────────────────────────────────────────────────
+
+    def reset_signal_logs(self) -> int:
+        """Tüm sinyal kayıtlarını siler. Silinen satır sayısını döndürür."""
+        with self._connect() as conn:
+            cursor = conn.execute("DELETE FROM signal_logs")
+            return int(cursor.rowcount)
+
+    def reset_trades(self) -> int:
+        """Tüm işlem kayıtlarını siler. Silinen satır sayısını döndürür."""
+        with self._connect() as conn:
+            cursor = conn.execute("DELETE FROM trades")
+            return int(cursor.rowcount)
+
+    def reset_all_data(self) -> dict[str, int]:
+        """Tüm işlem ve sinyal verilerini sıfırlar. Silinen satır sayılarını döndürür."""
+        signals_deleted = self.reset_signal_logs()
+        trades_deleted = self.reset_trades()
+        return {
+            "signal_logs": signals_deleted,
+            "trades": trades_deleted,
+        }
+
+    def get_record_counts(self) -> dict[str, int]:
+        """Mevcut kayıt sayılarını döndürür."""
+        with self._connect() as conn:
+            sig_count = conn.execute("SELECT COUNT(*) AS c FROM signal_logs").fetchone()["c"]
+            trade_count = conn.execute("SELECT COUNT(*) AS c FROM trades").fetchone()["c"]
+        return {
+            "signal_logs": int(sig_count),
+            "trades": int(trade_count),
+        }
+
+    # ── Equity Snapshots ─────────────────────────────────────────────────────
+
+    def add_equity_snapshot(
+        self,
+        balance: float,
+        equity: float,
+        drawdown_pct: float = 0.0,
+        open_positions: int = 0,
+        note: str | None = None,
+    ) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO equity_snapshots (balance, equity, drawdown_pct, open_positions, note, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (balance, equity, drawdown_pct, open_positions, note,
+                 datetime.now().isoformat(timespec="seconds")),
+            )
+
+    def get_equity_series(self, days: int = 90) -> list[dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT balance, equity, drawdown_pct, open_positions, note, created_at
+                FROM equity_snapshots
+                WHERE created_at >= datetime('now', ? || ' days')
+                ORDER BY created_at ASC
+                """,
+                (str(-days),),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def get_latest_equity(self) -> dict[str, Any] | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT balance, equity, drawdown_pct, open_positions, note, created_at "
+                "FROM equity_snapshots ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+        return dict(row) if row else None
+
+    # ── Backtest Results ─────────────────────────────────────────────────────
+
+    def save_backtest_result(
+        self,
+        *,
+        symbol: str,
+        timeframe: str,
+        tested_signals: int,
+        wins: int,
+        losses: int,
+        no_result: int,
+        winrate: float,
+        avg_rr: float,
+        expectancy: float,
+        sharpe_ratio: float | None = None,
+        profit_factor: float | None = None,
+        max_drawdown: float | None = None,
+        max_consecutive_losses: int | None = None,
+        monthly_breakdown: str | None = None,
+        equity_curve: str | None = None,
+        trade_log: str | None = None,
+    ) -> int:
+        with self._connect() as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO backtest_results (
+                    symbol, timeframe, tested_signals, wins, losses, no_result,
+                    winrate, avg_rr, expectancy, sharpe_ratio, profit_factor,
+                    max_drawdown, max_consecutive_losses, monthly_breakdown,
+                    equity_curve, trade_log, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    symbol.upper(), timeframe.lower(), tested_signals, wins, losses, no_result,
+                    winrate, avg_rr, expectancy, sharpe_ratio, profit_factor,
+                    max_drawdown, max_consecutive_losses, monthly_breakdown,
+                    equity_curve, trade_log,
+                    datetime.now().isoformat(timespec="seconds"),
+                ),
+            )
+            return int(cursor.lastrowid)
+
+    def get_backtest_history(self, limit: int = 20) -> list[dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT id, symbol, timeframe, tested_signals, wins, losses, no_result,
+                       winrate, avg_rr, expectancy, sharpe_ratio, profit_factor,
+                       max_drawdown, max_consecutive_losses, created_at
+                FROM backtest_results
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def get_backtest_detail(self, backtest_id: int) -> dict[str, Any] | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT id, symbol, timeframe, tested_signals, wins, losses, no_result,
+                       winrate, avg_rr, expectancy, sharpe_ratio, profit_factor,
+                       max_drawdown, max_consecutive_losses, monthly_breakdown,
+                       equity_curve, trade_log, created_at
+                FROM backtest_results
+                WHERE id = ?
+                """,
+                (backtest_id,),
+            ).fetchone()
+        return dict(row) if row else None
