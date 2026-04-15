@@ -1235,11 +1235,13 @@ async def alert_scan_job(context: CallbackContext) -> None:
             logger.info("alert scan skipped for chat %s: daily loss limit reached (%s SL)", chat_id, daily_sl_count)
             continue
 
-        # Mevcut bekleyen sinyalleri al — aynı sembol/TF'den tekrar sinyal verme
+        # Mevcut bekleyen GERÇEK sinyalleri al — aynı sembol/TF'den tekrar sinyal verme
+        # Sadece LONG/SHORT sinyalleri say, NO TRADE (hyp_pending) hariç
         pending_signals = repo.get_pending_signal_logs(limit=200)
         pending_keys = {
             f"{str(p['symbol']).upper()}_{str(p['timeframe']).lower()}"
             for p in pending_signals
+            if str(p.get('signal', '')) in ('LONG', 'SHORT')
         }
 
         for item in items:
