@@ -1294,14 +1294,17 @@ async def alert_scan_job(context: CallbackContext) -> None:
                         reason=f"ML filtre engelledi (P={ml_res.probability:.2f}) | {result.reason}",
                     )
                 result = _apply_ultra_selective_gate(result, locked_events)
-                log_signal(
-                    source="auto_alert_scan",
-                    chat_id=chat_id,
-                    symbol=item["symbol"],
-                    timeframe=item["timeframe"],
-                    result=result,
-                    events=events,
-                )
+
+                # Sadece LONG/SHORT sinyalleri kaydet — NO TRADE'ler DB'ye yazilmaz
+                if result.signal in ("LONG", "SHORT"):
+                    log_signal(
+                        source="auto_alert_scan",
+                        chat_id=chat_id,
+                        symbol=item["symbol"],
+                        timeframe=item["timeframe"],
+                        result=result,
+                        events=events,
+                    )
 
                 # Yeni basit alert gate: score zaten her seyi iceriyor
                 if (
