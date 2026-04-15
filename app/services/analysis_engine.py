@@ -1594,9 +1594,12 @@ class AnalysisEngine:
         _at_key_level_long = near_support or _near_ema20 or (bb_squeeze.get("breakout") == "BULLISH")
         _at_key_level_short = near_resistance or _near_ema20 or (bb_squeeze.get("breakout") == "BEARISH")
 
-        # ── Ichimoku & Divergence hesaplamaları (yeni stratejiler için) ──
+        # ── Yeni stratejiler için gereken tespitler (strateji seçiminden ÖNCE) ──
         ichimoku = self._ichimoku(data)
         divergence = self._detect_divergence(data, data["rsi"])
+        bos_mss = self._detect_bos_mss(data, trend, atr)
+        confirmation_candle = self._detect_confirmation_candle(data, "LONG" if trend == "Yukari" else "SHORT", atr)
+        judas_swing = self._detect_judas_swing(data, trend, atr)
 
         # ── Strateji Modu Seçimi ──
         if strategy_mode == "default":
@@ -1747,12 +1750,9 @@ class AnalysisEngine:
         else:
             regime = "RANGE"
 
-        # Onay mumu (signal belirlendikten sonra)
-        confirmation_candle = self._detect_confirmation_candle(data, signal, atr)
-        # BOS / MSS
-        bos_mss = self._detect_bos_mss(data, trend, atr)
-        # Judas Swing
-        judas_swing = self._detect_judas_swing(data, trend, atr)
+        # Onay mumu (signal belirlendikten sonra yeniden hesapla — doğru yönle)
+        if signal in ("LONG", "SHORT"):
+            confirmation_candle = self._detect_confirmation_candle(data, signal, atr)
 
         # SMC Confluence Sayısı
         smc_confluence_count = self._count_smc_confluence(
