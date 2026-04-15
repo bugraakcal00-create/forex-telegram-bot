@@ -1240,12 +1240,25 @@ async def alert_scan_job(context: CallbackContext) -> None:
             logger.info("alert scan skipped for chat %s: daily loss limit reached (%s SL)", chat_id, daily_sl_count)
             continue
 
+        # Mevcut bekleyen sinyalleri al — aynı sembol/TF'den tekrar sinyal verme
+        pending_signals = repo.get_pending_signal_logs(limit=200)
+        pending_keys = {
+            f"{str(p['symbol']).upper()}_{str(p['timeframe']).lower()}"
+            for p in pending_signals
+        }
+
         for item in items:
             try:
                 # Sadece yüksek WR'li kombinasyonlardan sinyal üret
                 best_mode = get_best_strategy(item["symbol"], item["timeframe"])
                 if best_mode is None:
                     continue  # Bu combo düşük WR, atla
+
+                # Zaten bekleyen sinyal varsa atla (TP/SL olana kadar)
+                combo_key = f"{item['symbol'].upper()}_{item['timeframe'].lower()}"
+                if combo_key in pending_keys:
+                    logger.debug("alert scan skip %s: pending signal exists", combo_key)
+                    continue
 
                 df = await market.fetch_candles(
                     item["symbol"],
