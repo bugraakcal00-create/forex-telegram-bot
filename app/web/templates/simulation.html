@@ -1,0 +1,264 @@
+{% extends "base.html" %}
+{% block title %}Simulasyon{% endblock %}
+{% block nav_sim %}active{% endblock %}
+
+{% block content %}
+<style>
+  .hero-balance {
+    text-align:center;
+    padding:30px 20px 20px;
+    background: linear-gradient(135deg, rgba(16,185,129,0.08) 0%, rgba(59,130,246,0.08) 100%);
+    border:1px solid var(--border2);
+    border-radius:16px;
+    margin-bottom:20px;
+  }
+  .hero-balance .label { color:var(--muted2); font-size:0.85rem; letter-spacing:1px; text-transform:uppercase; }
+  .hero-balance .amount { font-size:3.2rem; font-weight:800; letter-spacing:-1px; margin:6px 0; }
+  .hero-balance .pnl { font-size:1.1rem; font-weight:600; }
+  .hero-balance .meta { color:var(--muted2); font-size:0.8rem; margin-top:8px; }
+  .stat-row { display:flex; gap:12px; margin-bottom:16px; flex-wrap:wrap; }
+  .stat-box { flex:1; min-width:100px; background:var(--card); border:1px solid var(--border); border-radius:10px; padding:14px 16px; text-align:center; }
+  .stat-box .val { font-size:1.4rem; font-weight:700; }
+  .stat-box .lbl { font-size:0.75rem; color:var(--muted2); margin-top:2px; }
+  .trade-feed { display:flex; flex-direction:column; gap:8px; }
+  .trade-row {
+    display:flex; align-items:center; gap:12px; padding:12px 16px;
+    background:var(--card); border:1px solid var(--border); border-radius:10px;
+    transition: border-color 0.2s;
+  }
+  .trade-row:hover { border-color:var(--border2); }
+  .trade-row .t-icon { font-size:1.4rem; width:36px; text-align:center; flex-shrink:0; }
+  .trade-row .t-info { flex:1; }
+  .trade-row .t-symbol { font-weight:700; font-size:0.95rem; }
+  .trade-row .t-detail { font-size:0.78rem; color:var(--muted2); margin-top:2px; }
+  .trade-row .t-pnl { font-weight:700; font-size:1.05rem; text-align:right; min-width:80px; }
+  .trade-row .t-balance { font-size:0.78rem; color:var(--muted2); text-align:right; }
+  .trade-row.open { border-left:3px solid var(--blue); }
+  .trade-row.win { border-left:3px solid var(--green); }
+  .trade-row.loss { border-left:3px solid var(--red); }
+  .section-title { font-size:1rem; font-weight:700; color:var(--text2); margin:20px 0 10px; display:flex; align-items:center; gap:8px; }
+  .badge-sm { display:inline-block; padding:2px 8px; border-radius:4px; font-size:0.7rem; font-weight:600; }
+  .badge-long { background:rgba(16,185,129,0.15); color:#10b981; }
+  .badge-short { background:rgba(239,68,68,0.15); color:#ef4444; }
+  .badge-strat { background:rgba(59,130,246,0.12); color:#3b82f6; }
+  .badge-open { background:rgba(59,130,246,0.15); color:#3b82f6; }
+  .badge-tp { background:rgba(16,185,129,0.15); color:#10b981; }
+  .badge-sl { background:rgba(239,68,68,0.15); color:#ef4444; }
+  .controls-bar { display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap; align-items:center; }
+  .btn-action {
+    padding:8px 16px; border:none; border-radius:8px; cursor:pointer;
+    font-size:0.82rem; font-weight:600; transition:opacity 0.2s;
+  }
+  .btn-action:hover { opacity:0.85; }
+</style>
+
+<!-- HERO: Bakiye -->
+<div class="hero-balance" id="heroBalance">
+  <div class="label">Simulasyon Bakiyesi</div>
+  <div class="amount" style="color:{% if account.balance >= account.initial_balance %}#10b981{% else %}#ef4444{% endif %}">
+    ${{ "%.2f"|format(account.balance) }}
+  </div>
+  <div class="pnl" style="color:{% if account.profit >= 0 %}#10b981{% else %}#ef4444{% endif %}">
+    {% if account.profit >= 0 %}+{% endif %}${{ "%.2f"|format(account.profit) }}
+    ({% if account.total_return_pct >= 0 %}+{% endif %}{{ account.total_return_pct }}%)
+  </div>
+  <div class="meta">
+    Baslangic: ${{ "%.2f"|format(account.initial_balance) }} | Risk: %{{ account.risk_pct }} | Zirve: ${{ "%.2f"|format(account.peak_balance) }}
+  </div>
+</div>
+
+<!-- Istatistikler -->
+<div class="stat-row">
+  <div class="stat-box">
+    <div class="val">{{ account.total_trades }}</div>
+    <div class="lbl">Toplam Islem</div>
+  </div>
+  <div class="stat-box">
+    <div class="val" style="color:#10b981">{{ account.wins }}</div>
+    <div class="lbl">Kazanc</div>
+  </div>
+  <div class="stat-box">
+    <div class="val" style="color:#ef4444">{{ account.losses }}</div>
+    <div class="lbl">Kayip</div>
+  </div>
+  <div class="stat-box">
+    <div class="val" style="color:{% if account.winrate >= 50 %}#10b981{% else %}#f59e0b{% endif %}">%{{ account.winrate }}</div>
+    <div class="lbl">Win Rate</div>
+  </div>
+  <div class="stat-box">
+    <div class="val" style="color:#ef4444">%{{ account.drawdown_pct }}</div>
+    <div class="lbl">Drawdown</div>
+  </div>
+  <div class="stat-box">
+    <div class="val">{{ account.open_positions }}</div>
+    <div class="lbl">Acik Pozisyon</div>
+  </div>
+</div>
+
+<!-- Equity Curve -->
+{% if equity_curve %}
+<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px">
+  <canvas id="equityChart" height="180"></canvas>
+</div>
+{% endif %}
+
+<!-- Kontrol Butonlari -->
+<div class="controls-bar">
+  <button onclick="resolveSimTrades()" class="btn-action" style="background:#3b82f6;color:#fff">
+    Pozisyonlari Kontrol Et
+  </button>
+  <form action="/simulation/reset" method="POST" style="margin:0" onsubmit="return confirm('Simulasyon sifirlanacak ($100). Emin misiniz?')">
+    <button type="submit" class="btn-action" style="background:rgba(239,68,68,0.15);color:#ef4444">
+      Sifirla
+    </button>
+  </form>
+  <div style="flex:1"></div>
+  <span style="color:var(--muted2);font-size:0.78rem">Otomatik guncelleme: 60sn</span>
+</div>
+
+<!-- ACIK POZISYONLAR -->
+{% if account.open_trades %}
+<div class="section-title">
+  <span style="color:#3b82f6">&#9679;</span> Acik Pozisyonlar ({{ account.open_positions }})
+</div>
+<div class="trade-feed" style="margin-bottom:16px">
+  {% for t in account.open_trades %}
+  <div class="trade-row open">
+    <div class="t-icon">{% if t.direction == 'LONG' %}&#9650;{% else %}&#9660;{% endif %}</div>
+    <div class="t-info">
+      <div class="t-symbol">
+        {{ t.symbol }}
+        <span class="badge-sm {% if t.direction == 'LONG' %}badge-long{% else %}badge-short{% endif %}">{{ t.direction }}</span>
+        <span class="badge-sm badge-strat">{{ t.strategy_mode }}</span>
+        <span class="badge-sm badge-open">ACIK</span>
+      </div>
+      <div class="t-detail">
+        Giris: {{ "%.5f"|format(t.entry_price) }} | SL: {{ "%.5f"|format(t.stop_loss) }} | TP: {{ "%.5f"|format(t.take_profit) }}
+      </div>
+    </div>
+    <div>
+      <div class="t-pnl" style="color:#3b82f6">${{ "%.2f"|format(t.risk_amount) }} risk</div>
+      <div class="t-balance">{{ t.opened_at[:16] }}</div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- ISLEM GECMISI -->
+<div class="section-title">
+  <span style="color:#8b5cf6">&#9679;</span> Islem Gecmisi
+</div>
+
+{% if trade_history %}
+<div class="trade-feed">
+  {% set ns = namespace(running_balance=account.balance) %}
+  {% for t in trade_history %}
+  <div class="trade-row {% if t.pnl > 0 %}win{% elif t.pnl < 0 %}loss{% endif %}">
+    <div class="t-icon">
+      {% if t.status == 'tp_hit' %}
+        <span style="color:#10b981">&#10004;</span>
+      {% elif t.status == 'sl_hit' %}
+        <span style="color:#ef4444">&#10008;</span>
+      {% else %}
+        <span style="color:#f59e0b">&#8226;</span>
+      {% endif %}
+    </div>
+    <div class="t-info">
+      <div class="t-symbol">
+        {{ t.symbol }}
+        <span class="badge-sm {% if t.direction == 'LONG' %}badge-long{% else %}badge-short{% endif %}">{{ t.direction }}</span>
+        <span class="badge-sm badge-strat">{{ t.strategy_mode }}</span>
+        <span class="badge-sm {% if t.status == 'tp_hit' %}badge-tp{% else %}badge-sl{% endif %}">
+          {% if t.status == 'tp_hit' %}KAZANC{% elif t.status == 'sl_hit' %}KAYIP{% else %}{{ t.status }}{% endif %}
+        </span>
+      </div>
+      <div class="t-detail">
+        Giris: {{ "%.5f"|format(t.entry_price) }} | SL: {{ "%.5f"|format(t.stop_loss) }} | TP: {{ "%.5f"|format(t.take_profit) }} | {{ t.timeframe }}
+      </div>
+    </div>
+    <div>
+      <div class="t-pnl" style="color:{% if t.pnl >= 0 %}#10b981{% else %}#ef4444{% endif %}">
+        {% if t.pnl >= 0 %}+{% endif %}${{ "%.2f"|format(t.pnl) }}
+      </div>
+      <div class="t-balance">{{ (t.closed_at or t.opened_at)[:16] }}</div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div style="text-align:center;padding:40px 20px;color:var(--muted2);background:var(--card);border:1px solid var(--border);border-radius:10px">
+  <div style="font-size:2rem;margin-bottom:8px">&#128202;</div>
+  <div>Henuz islem yok</div>
+  <div style="font-size:0.8rem;margin-top:4px">Bot sinyalleri otomatik olarak burada islem olarak acilacak</div>
+</div>
+{% endif %}
+
+<!-- SEMBOL PERFORMANSI -->
+{% if account.by_symbol %}
+<div class="section-title" style="margin-top:24px">
+  <span style="color:#f59e0b">&#9679;</span> Sembol Performansi
+</div>
+<div class="stat-row" style="flex-wrap:wrap">
+  {% for s in account.by_symbol %}
+  <div class="stat-box" style="min-width:140px">
+    <div style="font-weight:700;font-size:0.9rem;margin-bottom:4px">{{ s.symbol }}</div>
+    <div class="val" style="font-size:1.1rem;color:{% if s.net_pnl >= 0 %}#10b981{% else %}#ef4444{% endif %}">
+      {% if s.net_pnl >= 0 %}+{% endif %}${{ "%.2f"|format(s.net_pnl) }}
+    </div>
+    <div class="lbl">{{ s.wins }}W / {{ s.losses }}L ({{ s.total }} islem)</div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<script>
+// Equity Curve
+const eqData = {{ equity_curve | tojson }};
+if (eqData.length > 0 && document.getElementById('equityChart')) {
+  new Chart(document.getElementById('equityChart').getContext('2d'), {
+    type: 'line',
+    data: {
+      labels: eqData.map((d, i) => d.created_at ? d.created_at.slice(5, 16) : '#'+(i+1)),
+      datasets: [{
+        data: eqData.map(d => d.balance),
+        borderColor: eqData[eqData.length-1].balance >= 100 ? '#10b981' : '#ef4444',
+        backgroundColor: eqData[eqData.length-1].balance >= 100 ? 'rgba(16,185,129,0.08)' : 'rgba(239,68,68,0.08)',
+        fill: true, tension: 0.3, pointRadius: 2, borderWidth: 2,
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => '$'+c.parsed.y.toFixed(2) } } },
+      scales: {
+        x: { display: true, grid: { color:'rgba(255,255,255,0.03)' }, ticks: { color:'#5a7aa8', maxTicksLimit:12, font:{size:10} } },
+        y: { display: true, grid: { color:'rgba(255,255,255,0.03)' }, ticks: { color:'#5a7aa8', callback: v=>'$'+v.toFixed(0) } }
+      }
+    }
+  });
+}
+
+async function resolveSimTrades() {
+  try {
+    const r = await fetch('/api/simulation/resolve', { method: 'POST' });
+    const d = await r.json();
+    if (d.resolved > 0) { location.reload(); }
+    else { /* sessiz */ }
+  } catch(e) {}
+}
+
+// Auto refresh
+setInterval(async () => {
+  try {
+    const r = await fetch('/api/simulation/summary');
+    const d = await r.json();
+    const el = document.querySelector('.hero-balance .amount');
+    if (el) {
+      el.textContent = '$' + d.balance.toFixed(2);
+      el.style.color = d.balance >= d.initial_balance ? '#10b981' : '#ef4444';
+    }
+  } catch(e) {}
+  resolveSimTrades();
+}, 60000);
+</script>
+{% endblock %}
