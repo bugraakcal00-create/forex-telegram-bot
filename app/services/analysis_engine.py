@@ -6,6 +6,8 @@ from math import isnan
 import numpy as np
 import pandas as pd
 
+from app.services.chart_patterns import detect_all_patterns, PatternResult
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 #   SEMBOL BAZLI STRATEJİ PROFİLLERİ
@@ -269,6 +271,7 @@ class AnalysisResult:
     silver_bullet: dict = field(default_factory=dict)
     ipda_levels: dict = field(default_factory=dict)
     amd_phase: dict = field(default_factory=dict)
+    chart_patterns: list[dict] = field(default_factory=list)  # Tespit edilen chart pattern'lar
 
 
 class AnalysisEngine:
@@ -1865,6 +1868,28 @@ class AnalysisEngine:
         if signal in {"LONG", "SHORT"}:
             score += min(smc_confluence_count * 2, 6)
 
+        # ── Chart Pattern Tespiti ve Bonus ──
+        detected_patterns = detect_all_patterns(data, atr)
+        chart_patterns_data: list[dict] = []
+        pattern_bonus = 0
+        for pat in detected_patterns:
+            chart_patterns_data.append({
+                "name": pat.name, "type": pat.pattern_type,
+                "direction": pat.direction, "confidence": pat.confidence,
+                "entry": pat.entry_price, "sl": pat.stop_loss, "tp": pat.take_profit,
+                "desc": pat.description,
+            })
+            # Sinyal yonuyle uyumlu pattern'lara bonus
+            if signal in {"LONG", "SHORT"}:
+                pat_dir = pat.direction
+                if (signal == "LONG" and pat_dir == "bullish") or (signal == "SHORT" and pat_dir == "bearish"):
+                    pattern_bonus += min(pat.confidence // 20, 4)  # max 4 puan per pattern
+                elif (signal == "LONG" and pat_dir == "bearish") or (signal == "SHORT" and pat_dir == "bullish"):
+                    pattern_bonus -= 2  # Ters yon pattern ceza
+
+        if signal in {"LONG", "SHORT"}:
+            score += min(pattern_bonus, 12)  # Max 12 puan pattern bonus
+
         # Clamp: 0-100 arası
         score = max(0, min(100, score))
         quality = self._quality_from_score(score)
@@ -1946,6 +1971,7 @@ class AnalysisEngine:
             silver_bullet=silver_bullet,
             ipda_levels=ipda_levels,
             amd_phase=amd_phase,
+            chart_patterns=chart_patterns_data,
         )
 
     @staticmethod
