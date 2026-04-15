@@ -163,7 +163,11 @@ def _is_expired(created_at_str: str, tf: str) -> bool:
 def _candles_needed(created_at_str: str, tf: str) -> int:
     try:
         created = datetime.fromisoformat(created_at_str)
-        elapsed_min = (datetime.now() - created).total_seconds() / 60
+        if created.tzinfo is None:
+            from zoneinfo import ZoneInfo
+            created = created.replace(tzinfo=ZoneInfo("UTC"))
+        from zoneinfo import ZoneInfo as _ZI2
+        elapsed_min = (datetime.now(_ZI2("UTC")) - created).total_seconds() / 60
         tf_min = _TF_MINUTES.get(tf, 5)
         return min(500, max(20, int(elapsed_min / tf_min) + 5))
     except Exception:
@@ -243,10 +247,17 @@ async def _resolve_pending_outcomes() -> dict[str, int]:
 
             try:
                 created_dt = datetime.fromisoformat(created_at_str)
+                if created_dt.tzinfo is not None:
+                    created_dt = created_dt.replace(tzinfo=None)  # naive yap, df ile uyumlu
             except Exception:
                 created_dt = datetime.now() - timedelta(hours=24)
 
-            candles_after = df[df["datetime"] >= created_dt]
+            # df["datetime"] naive olabilir, karsilastirma icin ayni tip olmali
+            try:
+                candles_after = df[df["datetime"] >= created_dt]
+            except TypeError:
+                # Tip uyumsuzlugu — naive'e zorla
+                candles_after = df[df["datetime"].dt.tz_localize(None) >= created_dt] if hasattr(df["datetime"].dt, "tz_localize") else df.tail(20)
             if candles_after.empty:
                 stats["still_pending"] += 1
                 continue

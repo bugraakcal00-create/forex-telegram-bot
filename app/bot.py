@@ -1236,12 +1236,13 @@ async def alert_scan_job(context: CallbackContext) -> None:
             continue
 
         # Mevcut bekleyen GERÇEK sinyalleri al — aynı sembol/TF'den tekrar sinyal verme
-        # Sadece LONG/SHORT sinyalleri say, NO TRADE (hyp_pending) hariç
+        # Sadece bu chat_id'ye ait LONG/SHORT sinyalleri say
         pending_signals = repo.get_pending_signal_logs(limit=200)
         pending_keys = {
             f"{str(p['symbol']).upper()}_{str(p['timeframe']).lower()}"
             for p in pending_signals
             if str(p.get('signal', '')) in ('LONG', 'SHORT')
+            and (p.get('chat_id') is None or int(p.get('chat_id', 0)) == chat_id)
         }
 
         for item in items:
@@ -1292,7 +1293,7 @@ async def alert_scan_job(context: CallbackContext) -> None:
                         no_trade_reasons=result.no_trade_reasons + [f"ML filtre: P(win)={ml_res.probability:.2f} < esik"],
                         reason=f"ML filtre engelledi (P={ml_res.probability:.2f}) | {result.reason}",
                     )
-                result = _apply_ultra_selective_gate(result, events)
+                result = _apply_ultra_selective_gate(result, locked_events)
                 log_signal(
                     source="auto_alert_scan",
                     chat_id=chat_id,
