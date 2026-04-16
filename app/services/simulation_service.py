@@ -190,11 +190,13 @@ class SimulationService:
             position_size = float(trade["position_size"])
             risk_amount = float(trade["risk_amount"])
 
-            # Calculate PnL
+            # Calculate PnL — spread/slippage düşülerek gerçekçi
+            from app.services.backtest_service import _exec_cost
+            cost = _exec_cost(str(trade["symbol"]))
             if direction == "LONG":
-                pnl = (exit_price - entry) * position_size
+                pnl = (exit_price - entry - cost) * position_size
             else:
-                pnl = (entry - exit_price) * position_size
+                pnl = (entry - exit_price - cost) * position_size
 
             pnl = round(pnl, 4)
             now = datetime.now().isoformat(timespec="seconds")
@@ -209,7 +211,7 @@ class SimulationService:
             new_balance = round(float(account["balance"]) + pnl, 4)
             new_total = int(account["total_trades"]) + 1
             new_wins = int(account["wins"]) + (1 if pnl > 0 else 0)
-            new_losses = int(account["losses"]) + (1 if pnl <= 0 else 0)
+            new_losses = int(account["losses"]) + (1 if pnl < 0 else 0)
             new_peak = max(float(account["peak_balance"]), new_balance)
 
             conn.execute(
@@ -357,6 +359,45 @@ class SimulationService:
                 GROUP BY symbol ORDER BY net_pnl DESC
             """).fetchall()
 
+        # Gelismis metrikler — Sharpe, Profit Factor, Expectancy, Max Consec Losses
+        with self._connect() as conn:
+            pnl_rows = conn.execute(
+                "SELECT pnl FROM sim_trades WHERE status != 'open' ORDER BY closed_at ASC"
+            ).fetchall()
+
+        pnls = [float(r["pnl"] or 0) for r in pnl_rows]
+        sharpe = 0.0
+        profit_factor = 0.0
+        expectancy = 0.0
+        max_consec_loss = 0
+
+        if pnls:
+            import math as _m
+            # Sharpe (trade-bazli, annualized yok — saf ratio)
+            mean = sum(pnls) / len(pnls)
+            if len(pnls) > 1:
+                var = sum((p - mean) ** 2 for p in pnls) / (len(pnls) - 1)
+                std = _m.sqrt(var) if var > 0 else 0.0
+                sharpe = round((mean / std), 3) if std > 0 else 0.0
+            # Profit Factor
+            gp = sum(p for p in pnls if p > 0)
+            gl = abs(sum(p for p in pnls if p < 0))
+            profit_factor = round(gp / gl, 3) if gl > 0 else (round(gp, 2) if gp > 0 else 0.0)
+            # Expectancy (ortalama PnL per trade)
+            expectancy = round(mean, 4)
+            # Max consecutive losses
+            cur, mx = 0, 0
+            for p in pnls:
+                if p < 0:
+                    cur += 1
+                    mx = max(mx, cur)
+                else:
+                    cur = 0
+            max_consec_loss = mx
+
+        # Max drawdown dollar (peak - trough)
+        max_dd_dollar = round(peak - balance, 2) if peak > balance else 0.0
+
         return {
             "balance": balance,
             "initial_balance": initial,
@@ -364,6 +405,7 @@ class SimulationService:
             "total_return_pct": total_return,
             "peak_balance": peak,
             "drawdown_pct": drawdown,
+            "max_dd_dollar": max_dd_dollar,
             "total_trades": total,
             "wins": wins,
             "losses": losses,
@@ -374,6 +416,11 @@ class SimulationService:
             "worst_trade": float(worst["worst"] or 0) if worst else 0,
             "avg_pnl": round(float(avg_pnl["avg"] or 0), 4) if avg_pnl else 0,
             "risk_pct": float(account["risk_pct"]),
+            # v2 metrikleri
+            "sharpe": sharpe,
+            "profit_factor": profit_factor,
+            "expectancy": expectancy,
+            "max_consec_loss": max_consec_loss,
             "by_symbol": [dict(r) for r in symbol_stats],
             "created_at": account["created_at"],
             "updated_at": account["updated_at"],

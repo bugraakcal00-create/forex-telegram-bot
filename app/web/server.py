@@ -1000,6 +1000,35 @@ def simulation_page(request: Request) -> object:
         except Exception:
             pass
 
+    # Protections status (daily loss cap, DD, trades today)
+    protections_status = []
+    try:
+        from app.services.protections import (
+            check_stoploss_guard, check_max_daily_loss, check_max_drawdown,
+            check_max_daily_trades, check_cooldown_after_sl,
+        )
+        from app.bot import repo as _bot_repo  # paylasilan repo
+        # Tum izlenen chat'ler icin durum — ilk chat ornegi yeterli
+        watches = _bot_repo.iter_all_watches()
+        if watches:
+            chat_id = int(next(iter(watches.keys())))
+            checks = [
+                ("Daily SL Count", check_stoploss_guard(_bot_repo, chat_id)),
+                ("Daily Loss Cap", check_max_daily_loss(_bot_repo, chat_id)),
+                ("Max Drawdown", check_max_drawdown(_bot_repo, chat_id)),
+                ("Daily Trade Cap", check_max_daily_trades(_bot_repo, chat_id)),
+                ("Cooldown After SL", check_cooldown_after_sl(_bot_repo, chat_id)),
+            ]
+            for name, c in checks:
+                protections_status.append({
+                    "name": name,
+                    "allowed": c.allowed,
+                    "reason": c.reason if not c.allowed else "OK",
+                    "protection": c.protection,
+                })
+    except Exception as exc:
+        logger.debug("protections status fetch failed: %s", exc)
+
     return templates.TemplateResponse(
         request,
         "simulation.html",
@@ -1009,6 +1038,7 @@ def simulation_page(request: Request) -> object:
             "trade_history": trade_history,
             "strategy_stats": strategy_stats,
             "best_strategies": best_strategies,
+            "protections_status": protections_status,
             "symbols": _FORECAST_SYMBOLS,
             "timeframes": _FORECAST_TIMEFRAMES,
         },
@@ -1018,6 +1048,34 @@ def simulation_page(request: Request) -> object:
 @app.get("/api/simulation/summary", tags=["Simulation"])
 def api_sim_summary() -> JSONResponse:
     return JSONResponse(sim_service.get_account_summary())
+
+
+@app.get("/api/intermarket/snapshot", tags=["Intermarket"])
+async def api_intermarket_snapshot() -> JSONResponse:
+    """XAU intermarket snapshot: DXY + US10Y real yield + XAU/XAG ratio."""
+    try:
+        from app.services.intermarket_service import build_snapshot, confluence_score
+        from app.bot import market as _market, _fetch_dxy_bias
+        dxy = await _fetch_dxy_bias()
+        snap = await build_snapshot(_market, dxy_bias=dxy)
+        long_score = confluence_score(snap, "LONG")
+        short_score = confluence_score(snap, "SHORT")
+        return JSONResponse({
+            "dxy_bias": snap.dxy_bias,
+            "real_yield_pct": snap.real_yield_pct,
+            "real_yield_delta_5d_bps": snap.real_yield_delta_5d,
+            "real_yield_pressure": snap.real_yield_pressure,
+            "xau_xag_ratio": snap.xau_xag_ratio,
+            "xau_xag_zscore": snap.xau_xag_zscore,
+            "xau_xag_signal": snap.xau_xag_signal,
+            "long_confluence_score": long_score,
+            "short_confluence_score": short_score,
+            "long_ok": long_score >= 0,
+            "short_ok": short_score >= 0,
+        })
+    except Exception as exc:
+        logger.warning("intermarket snapshot API failed: %s", exc)
+        return JSONResponse({"error": str(exc)}, status_code=500)
 
 
 @app.get("/api/simulation/equity", tags=["Simulation"])

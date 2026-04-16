@@ -67,7 +67,7 @@
   </div>
 </div>
 
-<!-- Istatistikler -->
+<!-- Temel Istatistikler -->
 <div class="stat-row">
   <div class="stat-box">
     <div class="val">{{ account.total_trades }}</div>
@@ -95,8 +95,97 @@
   </div>
 </div>
 
+<!-- Ileri Seviye Metrikler -->
+<div class="section-title" style="margin-top:18px">
+  <span style="color:#06b6d4">&#9679;</span> Quant Metrikleri
+  <span style="font-size:0.72rem;color:var(--muted2);font-weight:500;margin-left:6px">profesyonel performans olcumleri</span>
+</div>
+<div class="stat-row">
+  <div class="stat-box" title="Sharpe Ratio: getiri / risk orani. > 1 iyi, > 2 mukemmel.">
+    <div class="val" style="color:{% if account.sharpe >= 1 %}#10b981{% elif account.sharpe >= 0 %}#f59e0b{% else %}#ef4444{% endif %}">{{ account.sharpe }}</div>
+    <div class="lbl">Sharpe</div>
+  </div>
+  <div class="stat-box" title="Profit Factor: brut kar / brut zarar. > 2 iyi.">
+    <div class="val" style="color:{% if account.profit_factor >= 2 %}#10b981{% elif account.profit_factor >= 1 %}#f59e0b{% else %}#ef4444{% endif %}">{{ account.profit_factor }}</div>
+    <div class="lbl">Profit Factor</div>
+  </div>
+  <div class="stat-box" title="Expectancy: trade basi ortalama PnL ($).">
+    <div class="val" style="color:{% if account.expectancy >= 0 %}#10b981{% else %}#ef4444{% endif %}">${{ "%.2f"|format(account.expectancy) }}</div>
+    <div class="lbl">Expectancy</div>
+  </div>
+  <div class="stat-box" title="Art arda maksimum kayip sayisi.">
+    <div class="val" style="color:#f59e0b">{{ account.max_consec_loss }}</div>
+    <div class="lbl">Max Consec Loss</div>
+  </div>
+  <div class="stat-box" title="Peak bakiyeden mevcut bakiyeye dolar drawdown.">
+    <div class="val" style="color:#ef4444">${{ "%.2f"|format(account.max_dd_dollar) }}</div>
+    <div class="lbl">DD ($)</div>
+  </div>
+  <div class="stat-box" title="En iyi ve en kotu trade.">
+    <div class="val" style="font-size:1rem">
+      <span style="color:#10b981">+${{ "%.1f"|format(account.best_trade) }}</span>
+      /
+      <span style="color:#ef4444">${{ "%.1f"|format(account.worst_trade) }}</span>
+    </div>
+    <div class="lbl">Best / Worst</div>
+  </div>
+</div>
+
+<!-- Protections Status Panel -->
+{% if protections_status %}
+<div class="section-title" style="margin-top:18px">
+  <span style="color:#8b5cf6">&#9679;</span> Koruma Durumu (Prop Firm Disiplini)
+  <span style="font-size:0.72rem;color:var(--muted2);font-weight:500;margin-left:6px">risk kontrol sistemi</span>
+</div>
+<div class="stat-row">
+  {% for p in protections_status %}
+  <div class="stat-box" style="min-width:140px;border-left:3px solid {% if p.allowed %}#10b981{% else %}#ef4444{% endif %};text-align:left">
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+      <span style="color:{% if p.allowed %}#10b981{% else %}#ef4444{% endif %};font-size:0.9rem">
+        {% if p.allowed %}&#10004;{% else %}&#10008;{% endif %}
+      </span>
+      <span style="font-weight:700;font-size:0.82rem">{{ p.name }}</span>
+    </div>
+    <div style="font-size:0.72rem;color:{% if p.allowed %}var(--muted2){% else %}#ef4444{% endif %}">{{ p.reason }}</div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- Intermarket Snapshot (XAU icin kritik) -->
+<div class="section-title" style="margin-top:18px">
+  <span style="color:#f59e0b">&#9679;</span> Intermarket Snapshot (XAU)
+  <span style="font-size:0.72rem;color:var(--muted2);font-weight:500;margin-left:6px">DXY + US10Y Real Yield + XAU/XAG</span>
+  <span style="margin-left:auto;font-size:0.72rem;color:var(--muted2)" id="imRefresh">yukleniyor...</span>
+</div>
+<div class="stat-row" id="intermarketPanel">
+  <div class="stat-box" style="min-width:140px">
+    <div class="val" style="font-size:1rem" id="imDxy">...</div>
+    <div class="lbl">DXY Bias</div>
+  </div>
+  <div class="stat-box" style="min-width:140px">
+    <div class="val" style="font-size:1rem" id="imRealYield">...</div>
+    <div class="lbl">US10Y Real Yield</div>
+  </div>
+  <div class="stat-box" style="min-width:140px">
+    <div class="val" style="font-size:1rem" id="imXauXag">...</div>
+    <div class="lbl">XAU/XAG Z-Score</div>
+  </div>
+  <div class="stat-box" style="min-width:140px">
+    <div class="val" style="font-size:1rem" id="imLongScore">...</div>
+    <div class="lbl">LONG Confluence</div>
+  </div>
+  <div class="stat-box" style="min-width:140px">
+    <div class="val" style="font-size:1rem" id="imShortScore">...</div>
+    <div class="lbl">SHORT Confluence</div>
+  </div>
+</div>
+
 <!-- Equity Curve -->
 {% if equity_curve %}
+<div class="section-title" style="margin-top:18px">
+  <span style="color:#10b981">&#9679;</span> Equity Egrisi
+</div>
 <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px">
   <canvas id="equityChart" height="180"></canvas>
 </div>
@@ -260,5 +349,48 @@ setInterval(async () => {
   } catch(e) {}
   resolveSimTrades();
 }, 60000);
+
+// ── Intermarket Snapshot Loader ───────────────────────────────
+async function loadIntermarket() {
+  const setTxt = (id, txt, color) => {
+    const el = document.getElementById(id);
+    if (el) { el.textContent = txt; if (color) el.style.color = color; }
+  };
+  const refreshEl = document.getElementById('imRefresh');
+  try {
+    const r = await fetch('/api/intermarket/snapshot');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+
+    // DXY
+    const dxyColor = d.dxy_bias === 'BULLISH' ? '#10b981' : d.dxy_bias === 'BEARISH' ? '#ef4444' : '#f59e0b';
+    setTxt('imDxy', d.dxy_bias, dxyColor);
+
+    // Real yield
+    const ryTxt = (d.real_yield_pct || 0).toFixed(2) + '% (' + (d.real_yield_delta_5d_bps >= 0 ? '+' : '') +
+                  (d.real_yield_delta_5d_bps || 0).toFixed(0) + 'bps 5g)';
+    const ryColor = d.real_yield_pressure === 'BEARISH_XAU' ? '#ef4444' :
+                    d.real_yield_pressure === 'BULLISH_XAU' ? '#10b981' : '#f59e0b';
+    setTxt('imRealYield', ryTxt, ryColor);
+
+    // XAU/XAG
+    const xxTxt = (d.xau_xag_ratio || 0).toFixed(1) + ' (z=' + (d.xau_xag_zscore || 0).toFixed(2) + ')';
+    const xxColor = d.xau_xag_signal === 'XAU_STRONG' ? '#10b981' :
+                    d.xau_xag_signal === 'XAU_WEAK' ? '#ef4444' : '#f59e0b';
+    setTxt('imXauXag', xxTxt, xxColor);
+
+    // Confluence scores
+    const longColor = d.long_confluence_score >= 2 ? '#10b981' : d.long_confluence_score >= 0 ? '#f59e0b' : '#ef4444';
+    const shortColor = d.short_confluence_score >= 2 ? '#10b981' : d.short_confluence_score >= 0 ? '#f59e0b' : '#ef4444';
+    setTxt('imLongScore', (d.long_confluence_score >= 0 ? '+' : '') + d.long_confluence_score + ' / 3', longColor);
+    setTxt('imShortScore', (d.short_confluence_score >= 0 ? '+' : '') + d.short_confluence_score + ' / 3', shortColor);
+
+    if (refreshEl) refreshEl.textContent = 'guncel: ' + new Date().toLocaleTimeString('tr-TR');
+  } catch (e) {
+    if (refreshEl) refreshEl.textContent = 'yuklenemedi';
+  }
+}
+loadIntermarket();
+setInterval(loadIntermarket, 5 * 60 * 1000); // 5 dk'da bir yenile
 </script>
 {% endblock %}

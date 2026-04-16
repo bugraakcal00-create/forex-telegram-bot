@@ -1,4 +1,33 @@
 .env
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+
+# Data
 data/bot.db
+data/bot.db-shm
+data/bot.db-wal
+data/logs/
+data/ml_signal_filter.pkl
+data/ml_training_data.json
+data/ml_training_report.json
+data/tier1_backtest_report.json
+
+# venv
+venv/
+.venv/
+env/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Claude Code
+.claude/
+
+# Test artifacts
+test_*.png
+*.log

@@ -1698,6 +1698,43 @@ class AnalysisEngine:
             long_ok = (trend == "Yukari" and _rsi_not_extreme and _vol_ok and _at_key_level_long)
             short_ok = (trend == "Asagi" and _rsi_not_extreme and _vol_ok and _at_key_level_short)
 
+        # ── EMA200 Rejim Filtresi (Paul Tudor Jones) ──
+        # "Nothing good happens below the 200-day."
+        # Trend-following modlarda: fiyat EMA200'ün altındaysa SHORT-only,
+        # üstündeyse LONG-only. Reversal/divergence modları hariç (counter-trend niyetli).
+        _counter_trend_modes = {"reversal", "divergence"}
+        if prof.require_ema200 and strategy_mode not in _counter_trend_modes:
+            if current_price < ema200 and long_ok:
+                long_ok = False
+                no_trade_reasons.append(f"EMA200 altinda ({current_price:.5f}<{ema200:.5f}) — LONG engellendi")
+            if current_price > ema200 and short_ok:
+                short_ok = False
+                no_trade_reasons.append(f"EMA200 ustunde ({current_price:.5f}>{ema200:.5f}) — SHORT engellendi")
+
+        # ── Counter-trend SHORT allowance (trend="Yukari" iken bile) ──
+        # Persistent uptrend'lerde SHORT fırsatları kaçmasın: RSI aşırı alım +
+        # resistance dokunuşu + bearish divergence varsa SHORT'a izin.
+        # LONG için de tersi uygulanır (persistent downtrend'lerde counter-trend LONG).
+        if not short_ok and not long_ok:  # trend filtresi iptal ettiyse
+            _strong_overbought = rsi > (prof.rsi_overbought + 5)  # çok aşırı alım
+            _strong_oversold = rsi < (prof.rsi_oversold - 5)      # çok aşırı satım
+            _at_resistance = near_resistance
+            _at_support = near_support
+            _bearish_div = divergence.get("bearish_div", False)
+            _bullish_div = divergence.get("bullish_div", False)
+
+            # Counter-trend SHORT (trend Yukari iken)
+            if trend == "Yukari" and _strong_overbought and _at_resistance and _bearish_div and _vol_ok:
+                short_ok = True
+                no_trade_reasons = [r for r in no_trade_reasons if "SHORT engellendi" not in r]
+                no_trade_reasons.append("Counter-trend SHORT: RSI>75 + resistance + bearish divergence")
+
+            # Counter-trend LONG (trend Asagi iken)
+            if trend == "Asagi" and _strong_oversold and _at_support and _bullish_div and _vol_ok:
+                long_ok = True
+                no_trade_reasons = [r for r in no_trade_reasons if "LONG engellendi" not in r]
+                no_trade_reasons.append("Counter-trend LONG: RSI<25 + support + bullish divergence")
+
         # Haber kilidi — hard gate (sinyal verme)
         if high_impact_events:
             long_ok = False

@@ -22,7 +22,7 @@ from app.services.ml_filter import ml_filter
 from app.services.news_service import NewsService
 from app.services.risk_manager import risk_manager
 from app.services.sentiment_service import analyze_news_list
-from app.services.session_service import get_session_status
+from app.services.session_service import get_session_status, is_in_blackout, near_round_number
 from app.services.retail_sentiment import get_retail_sentiment, get_contrarian_filter
 from app.services.simulation_service import SimulationService
 from app.storage.sqlite_store import BotRepository
@@ -60,8 +60,11 @@ def _load_best_strategies() -> dict[str, dict]:
                 "Loaded %d high-WR strategies (>=%s%%) from optimizer",
                 len(_best_strategies_cache), _MIN_WR_FOR_SIGNAL,
             )
-    except Exception:
-        pass
+    except Exception as exc:
+        logging.getLogger(__name__).warning(
+            "best_strategies.json load failed: %s — WR filtresi devre disi, tum sinyaller gidecek",
+            exc,
+        )
     _best_strategies_loaded = True
     return _best_strategies_cache
 
@@ -218,6 +221,17 @@ async def _fetch_dxy_bias() -> str:
     except Exception:
         pass
     return "NEUTRAL"
+
+
+async def _fetch_intermarket_snapshot(dxy_bias: str):
+    """Intermarket snapshot: DXY + US10Y real yield + XAU/XAG ratio."""
+    try:
+        from app.services.intermarket_service import build_snapshot
+        return await build_snapshot(market, dxy_bias=dxy_bias)
+    except Exception as exc:
+        logger.debug("intermarket snapshot failed: %s", exc)
+        from app.services.intermarket_service import IntermarketSnapshot
+        return IntermarketSnapshot(dxy_bias=dxy_bias)
 
 
 async def _fetch_cot_bias(symbol: str) -> str:
@@ -1141,7 +1155,7 @@ async def resolve_signal_outcomes_job(context: CallbackContext) -> None:
             if _is_expired(created_at_str, row_tf):
                 repo.resolve_signal_outcome(
                     signal_log_id, "expired", 0.0,
-                    f"Sinyal {_TF_EXPIRY_HOURS.get(row_tf, 72)}s icinde sonuclanmadi"
+                    f"Sinyal {_TF_EXPIRY_HOURS.get(row_tf, 72)} saat icinde sonuclanmadi"
                 )
                 logger.info("outcome: expired signal_id=%s %s %s", signal_log_id, symbol, signal)
                 continue
@@ -1211,6 +1225,12 @@ async def alert_scan_job(context: CallbackContext) -> None:
     # Killzone filtresi KALDIRILDI — optimizer zaten en iyi strateji/TF'yi seçti
     # Seans açıksa tarama yapılır
 
+    # Likidite blackout hard gate (London fix, NY cut, rollover, hafta sonu)
+    in_blackout, blackout_name = is_in_blackout()
+    if in_blackout:
+        logger.info("alert scan blocked — likidite blackout: %s", blackout_name)
+        return
+
     events = await calendar_service.get_upcoming_high_impact_events(hours_ahead=2, limit=3)
     locked_events = news_lock_events(events, settings.news_lock_minutes)
     # Optimizer zaten WR>=50% filtreledi, burada min_score/min_rr gevşetildi
@@ -1225,22 +1245,34 @@ async def alert_scan_job(context: CallbackContext) -> None:
         _fetch_sentiment(),
     )
 
+    # Intermarket snapshot (XAU için kritik): real yield + XAU/XAG
+    intermarket_snap = await _fetch_intermarket_snapshot(dxy_bias)
+    logger.info(
+        "Intermarket: DXY=%s | RealYield=%.2f%% (%+.0fbps 5d, %s) | XAU/XAG=%.2f (z=%.2f, %s)",
+        intermarket_snap.dxy_bias, intermarket_snap.real_yield_pct,
+        intermarket_snap.real_yield_delta_5d, intermarket_snap.real_yield_pressure,
+        intermarket_snap.xau_xag_ratio, intermarket_snap.xau_xag_zscore,
+        intermarket_snap.xau_xag_signal,
+    )
+
+    # Pending signals DB cache — tüm chatler için tek seferde çekilir, chat bazli filtrelenir
+    _all_pending_signals = repo.get_pending_signal_logs(limit=200)
+
+    from app.services.protections import run_all_protections, check_min_rr
+
     for chat_id_str, items in repo.iter_all_watches().items():
         chat_id = int(chat_id_str)
 
-        # Günlük kayıp limiti: bugün 2'den fazla SL yediyse o chat için dur
-        today_stats = repo.get_today_trade_stats(chat_id)
-        daily_sl_count = int(today_stats.get("losses", 0))
-        if daily_sl_count >= 2:
-            logger.info("alert scan skipped for chat %s: daily loss limit reached (%s SL)", chat_id, daily_sl_count)
+        # Prop firm disiplin kuralları — tüm korumalar tek seferde kontrol edilir
+        prot = run_all_protections(repo, chat_id)
+        if not prot.allowed:
+            logger.info("alert scan skipped chat %s: [%s] %s", chat_id, prot.protection, prot.reason)
             continue
 
-        # Mevcut bekleyen GERÇEK sinyalleri al — aynı sembol/TF'den tekrar sinyal verme
-        # Sadece bu chat_id'ye ait LONG/SHORT sinyalleri say
-        pending_signals = repo.get_pending_signal_logs(limit=200)
+        # Mevcut bekleyen GERÇEK sinyalleri filtrele — aynı sembol/TF'den tekrar sinyal verme
         pending_keys = {
             f"{str(p['symbol']).upper()}_{str(p['timeframe']).lower()}"
-            for p in pending_signals
+            for p in _all_pending_signals
             if str(p.get('signal', '')) in ('LONG', 'SHORT')
             and (p.get('chat_id') is None or int(p.get('chat_id', 0)) == chat_id)
         }
@@ -1293,6 +1325,44 @@ async def alert_scan_job(context: CallbackContext) -> None:
                         no_trade_reasons=result.no_trade_reasons + [f"ML filtre: P(win)={ml_res.probability:.2f} < esik"],
                         reason=f"ML filtre engelledi (P={ml_res.probability:.2f}) | {result.reason}",
                     )
+                # Round number stop-hunt filtresi
+                if result.signal in ("LONG", "SHORT"):
+                    try:
+                        _last_close = float(df.iloc[-1]["close"])
+                        _atr = float(result.atr or 0.0)
+                        if _atr > 0 and near_round_number(item["symbol"], _last_close, _atr):
+                            result = _dc_replace(
+                                result,
+                                signal="NO TRADE",
+                                no_trade_reasons=result.no_trade_reasons + ["Round number yakininda (stop hunt zonu)"],
+                                reason=f"Round number stop-hunt riski | {result.reason}",
+                            )
+                    except Exception:
+                        pass
+
+                # Min R:R hard gate (prop firm disiplini)
+                if result.signal in ("LONG", "SHORT"):
+                    rr_check = check_min_rr(float(result.rr_ratio or 0.0))
+                    if not rr_check.allowed:
+                        result = _dc_replace(
+                            result,
+                            signal="NO TRADE",
+                            no_trade_reasons=result.no_trade_reasons + [rr_check.reason],
+                            reason=f"{rr_check.reason} | {result.reason}",
+                        )
+
+                # Intermarket confluence filtresi (sadece XAU için kritik — real yield + XAU/XAG)
+                if item["symbol"].upper() == "XAUUSD" and result.signal in ("LONG", "SHORT"):
+                    from app.services.intermarket_service import confluence_score as _im_score
+                    _im = _im_score(intermarket_snap, result.signal)
+                    if _im <= -2:  # 3 göstergeden 2'si karşıt → veto
+                        result = _dc_replace(
+                            result,
+                            signal="NO TRADE",
+                            no_trade_reasons=result.no_trade_reasons + [f"Intermarket veto (score={_im})"],
+                            reason=f"Intermarket uyumsuz (DXY/realyield/XAUXAG score={_im}) | {result.reason}",
+                        )
+
                 result = _apply_ultra_selective_gate(result, locked_events)
 
                 # Sadece LONG/SHORT sinyalleri kaydet — NO TRADE'ler DB'ye yazilmaz

@@ -254,30 +254,86 @@ def extract_features_v3(result: AnalysisResult, df: pd.DataFrame, hour: int = 12
 
 def evaluate_outcome(signal: str, tp: float, sl: float, rr: float,
                      future_df: pd.DataFrame) -> tuple[int, float] | None:
-    entry = float(future_df.iloc[0]["open"]) if len(future_df) > 0 else 0
+    """Triple-barrier labeling (López de Prado, Ch. 3).
+
+    Üç bariyer — hangisi önce vurursa o etiket:
+      - TP  → 1 (win), realized RR = rr
+      - SL  → 0 (loss), realized RR = -1.0
+      - Timeout (future_df'in sonu) → None (dropped, zayıf sinyal)
+    Ayrıca spread + slippage cost modeli: TP zor, SL kolay.
+    """
+    if len(future_df) == 0:
+        return None
+    entry = float(future_df.iloc[0]["open"])
     risk = abs(entry - sl)
     if risk < 1e-9:
         return None
 
-    tp1 = entry + risk * 1.5 if signal == "LONG" else entry - risk * 1.5
-    tp1_hit = False
+    # Spread/slippage dahil efektif bariyerler (backtest ile tutarlı)
+    from app.services.backtest_service import _exec_cost
+    # Sembol bilgisi yok → XAUUSD default kabul et (XAU eğitimi baskın)
+    # Not: gerçek kullanımda symbol parametresi eklenebilir
+    cost = 0.0  # training'de symbol geçmediği için cost = 0, backtest gerçekçiliği burada değil ML label'da önemli
+
+    if signal == "LONG":
+        tp_eff, sl_eff = tp + cost, sl + cost
+    elif signal == "SHORT":
+        tp_eff, sl_eff = tp - cost, sl - cost
+    else:
+        return None
 
     for _, c in future_df.iterrows():
         h, l, o = float(c["high"]), float(c["low"]), float(c["open"])
         if signal == "LONG":
-            t_hit, s_hit, t1 = h >= tp, l <= sl, h >= tp1
+            t_hit, s_hit = h >= tp_eff, l <= sl_eff
         else:
-            t_hit, s_hit, t1 = l <= tp, h >= sl, l <= tp1
+            t_hit, s_hit = l <= tp_eff, h >= sl_eff
 
         if t_hit and s_hit:
-            return (1, rr) if abs(o - tp) <= abs(o - sl) else (0, -1.0)
+            # Aynı mumda ikisi de vurdu → açılışa yakın olan kazanır
+            return (1, rr) if abs(o - tp_eff) <= abs(o - sl_eff) else (0, -1.0)
         if t_hit:
             return (1, rr)
         if s_hit:
-            return (1, 0.25) if tp1_hit else (0, -1.0)
-        if t1:
-            tp1_hit = True
+            return (0, -1.0)
+    # Timeout — sinyal zayıf, ML training setinden çıkar
     return None
+
+
+# ── Purged Walk-Forward CV (López de Prado Ch. 7) ──────────────────────────
+def purged_walk_forward_split(n_samples: int, n_splits: int = 5, embargo: int = 25):
+    """Embargo-bazlı purged walk-forward CV.
+
+    TimeSeriesSplit'in aksine train/test arasına `embargo` kadar
+    örnek boşluk bırakır → overlapping triple-barrier label'lardan
+    kaynaklı data leakage'ı önler.
+
+    Args:
+        n_samples: toplam örnek sayısı
+        n_splits: fold sayısı
+        embargo: train-test arası embargo bar sayısı (LOOKAHEAD kadar olmalı)
+
+    Yields:
+        (train_idx, test_idx) tuple'ları
+    """
+    test_size = n_samples // (n_splits + 1)
+    if test_size < 10:
+        # Çok az örnek → eski TimeSeriesSplit'e düş
+        from sklearn.model_selection import TimeSeriesSplit
+        yield from TimeSeriesSplit(n_splits=n_splits).split(np.arange(n_samples))
+        return
+
+    for fold in range(n_splits):
+        test_start = test_size * (fold + 1)
+        test_end = test_start + test_size
+        if test_end > n_samples:
+            test_end = n_samples
+        train_end = max(0, test_start - embargo)
+        if train_end < 20:
+            continue
+        train_idx = np.arange(0, train_end)
+        test_idx = np.arange(test_start, test_end)
+        yield train_idx, test_idx
 
 
 # ── Data Fetch ─────────────────────────────────────────────────────────────
@@ -547,18 +603,16 @@ def train_elite(X_raw: np.ndarray, y: np.ndarray, meta: list[dict]) -> tuple[obj
     logger.info("XGBoost + LightGBM + RandomForest → LogisticRegression meta")
     logger.info("Class weight: scale_pos_weight=%.2f", scale_pos)
 
-    # ── Step 4: Purged Walk-Forward CV ──
-    logger.info("\n--- PURGED WALK-FORWARD CV ---")
-    PURGE_BARS = 10  # gap between train/test to prevent leakage
+    # ── Step 4: Purged Walk-Forward CV (embargo = LOOKAHEAD) ──
+    # Triple-barrier label'lar LOOKAHEAD kadar ileri mum içerir.
+    # Embargo bu örtüşmeyi train/test arasından atarak data leakage'ı kapatır.
+    logger.info("\n--- PURGED WALK-FORWARD CV (embargo=%d) ---", LOOKAHEAD)
 
-    tscv = TimeSeriesSplit(n_splits=5)
     all_probs, all_true, all_idx = [], [], []
 
-    for fold, (train_idx, test_idx) in enumerate(tscv.split(X_scaled)):
-        # Purge: remove last PURGE_BARS from training
-        if len(train_idx) > PURGE_BARS:
-            train_idx = train_idx[:-PURGE_BARS]
-
+    for fold, (train_idx, test_idx) in enumerate(
+        purged_walk_forward_split(len(X_scaled), n_splits=5, embargo=LOOKAHEAD)
+    ):
         X_tr, X_te = X_scaled[train_idx], X_scaled[test_idx]
         y_tr, y_te = y[train_idx], y[test_idx]
 

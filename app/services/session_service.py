@@ -1,8 +1,77 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from zoneinfo import ZoneInfo
+
+
+# ── Likidite Blackout Pencereleri (UTC) ───────────────────────────────────
+# Market maker manipülasyonu yoğun — bu zamanlarda sinyal alma.
+_BLACKOUT_WINDOWS: list[tuple[str, time, time]] = [
+    ("London Fix",       time(15, 45), time(16, 15)),  # 4pm London fix manipülasyon
+    ("NY Option Cut",    time(14, 55), time(15, 5)),   # NY option cut
+    ("Rollover",         time(21, 55), time(22, 5)),   # günlük swap
+    ("Sunday Open",      time(22, 0),  time(23, 59)),  # sadece pazar
+]
+
+
+def is_in_blackout(utc_dt: datetime | None = None) -> tuple[bool, str]:
+    """Likidite blackout penceresinde miyiz?
+
+    Returns:
+        (in_blackout, window_name). Değilse (False, "").
+    """
+    if utc_dt is None:
+        utc_dt = datetime.now(ZoneInfo("UTC"))
+    t = utc_dt.time()
+    wd = utc_dt.weekday()  # 0=Mon, 6=Sun
+
+    # Sunday open: sadece pazar günü
+    for name, start, end in _BLACKOUT_WINDOWS:
+        if name == "Sunday Open":
+            if wd == 6 and _is_between(t, start, end):
+                return True, name
+        else:
+            if _is_between(t, start, end):
+                return True, name
+
+    # Hafta sonu hard-block: Cuma 20:00 UTC - Pazar 22:00 UTC
+    if wd == 4 and t >= time(20, 0):
+        return True, "Friday Close"
+    if wd == 5:
+        return True, "Weekend"
+    if wd == 6 and t < time(22, 0):
+        return True, "Sunday (pre-open)"
+
+    return False, ""
+
+
+# ── Round Number Tespiti ──────────────────────────────────────────────────
+# Stop hunt zone: $2000, $2050, $2100, 1.1000, 1.2000 etc.
+_ROUND_NUMBER_STEPS = {
+    "XAUUSD": 50.0,   # her $50'de round
+    "XAGUSD": 1.0,
+    "BTCUSD": 1000.0,
+    "USDJPY": 1.0,    # 150.00, 151.00
+    "EURJPY": 1.0,
+    "GBPJPY": 1.0,
+    # EUR/GBP/AUD etc.: 0.0100 = 100 pip round (1.1000, 1.2000)
+}
+
+
+def near_round_number(symbol: str, price: float, atr: float, tolerance_atr: float = 0.3) -> bool:
+    """Fiyat round number'a yakın mı (tolerance_atr × ATR mesafesi içinde)?
+
+    Round number'lar bankaların stop hunt bölgesi. Bu zonlarda sinyal riskli.
+    """
+    sym = symbol.upper()
+    step = _ROUND_NUMBER_STEPS.get(sym, 0.0100)  # EUR/GBP/AUD default
+    if step <= 0 or atr <= 0:
+        return False
+    # En yakın round number
+    nearest = round(price / step) * step
+    distance = abs(price - nearest)
+    return distance <= atr * tolerance_atr
 
 
 @dataclass(frozen=True)
