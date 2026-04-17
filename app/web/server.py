@@ -379,7 +379,10 @@ async def news_page(request: Request) -> object:
     cached_cal = _cached("calendar")
     if not cached_cal:
         try:
-            cached_cal = await calendar_service.get_upcoming_high_impact_events(hours_ahead=48, limit=25)
+            # High + medium impact — panel daha dolu görünsün
+            cached_cal = await calendar_service.get_upcoming_events(
+                hours_ahead=48, limit=30, impacts=("high", "medium"),
+            )
         except Exception:
             cached_cal = []
         if cached_cal:
@@ -440,7 +443,9 @@ async def api_calendar() -> JSONResponse:
     cached = _cached("calendar")
     if cached is None:
         try:
-            cached = await calendar_service.get_upcoming_high_impact_events(hours_ahead=48, limit=25)
+            cached = await calendar_service.get_upcoming_events(
+                hours_ahead=48, limit=30, impacts=("high", "medium"),
+            )
         except Exception:
             cached = []
         _set_cache("calendar", cached)

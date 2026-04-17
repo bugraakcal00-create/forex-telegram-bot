@@ -264,14 +264,21 @@
                 {{ event.date[:16].replace('T',' ') if event.date else '-' }}
               </div>
 
-              <!-- Dot -->
-              <div class="cal-dot dot-high" style="margin-top:6px;flex-shrink:0"></div>
+              <!-- Dot — impact seviyesine göre renk -->
+              {% set _imp = (event.impact or '').lower() %}
+              <div class="cal-dot {% if _imp == 'high' %}dot-high{% elif _imp == 'medium' %}dot-med{% else %}dot-low{% endif %}" style="margin-top:6px;flex-shrink:0"></div>
 
               <!-- Bayrak + içerik -->
               <div style="flex:1;min-width:0">
                 <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:5px">
                   <span class="cal-flag">{{ event.country }}</span>
-                  <span class="impact-chip chip-high">YÜKSEK</span>
+                  {% if _imp == 'high' %}
+                    <span class="impact-chip chip-high">YÜKSEK</span>
+                  {% elif _imp == 'medium' %}
+                    <span class="impact-chip" style="background:rgba(245,158,11,.15);color:var(--gold);border:1px solid rgba(245,158,11,.3)">ORTA</span>
+                  {% else %}
+                    <span class="impact-chip" style="background:rgba(16,185,129,.12);color:var(--green);border:1px solid rgba(16,185,129,.25)">DÜŞÜK</span>
+                  {% endif %}
                   <span style="font-size:.82rem;font-weight:600;color:var(--text)">{{ event.event }}</span>
                   {% if event.actual and event.forecast %}
                     <span class="beat-badge beat-neutral" title="Gerçekleşen vs Tahmin">G/T</span>
@@ -382,16 +389,15 @@
       {% else %}
         <div class="empty-state">
           <div class="empty-icon">📅</div>
-          <b>Takvim verisi yok</b>
+          <b>Önümüzdeki 48 saat sessiz</b>
           <p>
-            FMP API anahtarı tanımlı değil veya veri alınamadı.<br>
-            <code style="background:rgba(255,255,255,.07);padding:2px 7px;border-radius:5px;font-size:.72rem">FMP_API_KEY</code>
-            değerini .env dosyasına ekleyin.
+            Yüksek veya orta etkili ekonomik olay yok.<br>
+            Veri kaynağı: <code style="background:rgba(255,255,255,.07);padding:2px 7px;border-radius:5px;font-size:.72rem">ForexFactory</code>
+            (ücretsiz, API key gerektirmez).
           </p>
-          <a href="https://financialmodelingprep.com/developer/docs" target="_blank"
-             class="btn btn-ghost" style="display:inline-flex;margin-top:14px;width:auto;padding:8px 20px">
-            Ücretsiz API Anahtarı Al →
-          </a>
+          <p style="font-size:.72rem;color:var(--muted);margin-top:10px">
+            Hafta sonu, tatil veya geç saatlerde takvim boş olabilir — normal bir durum.
+          </p>
         </div>
       {% endif %}
     </div>

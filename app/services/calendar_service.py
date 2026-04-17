@@ -40,7 +40,7 @@ class CalendarService:
     ) -> list[dict[str, str]]:
         # Önce ForexFactory'yi dene (ücretsiz, güvenilir)
         try:
-            result = await self._fetch_forexfactory(hours_ahead, limit)
+            result = await self._fetch_forexfactory(hours_ahead, limit, impacts=("high",))
             if result:
                 return result
         except Exception:
@@ -57,11 +57,24 @@ class CalendarService:
 
         return []
 
+    async def get_upcoming_events(
+        self,
+        hours_ahead: int = 48,
+        limit: int = 30,
+        impacts: tuple[str, ...] = ("high", "medium"),
+    ) -> list[dict[str, str]]:
+        """Tum etki seviyelerinden gelecek event'ler (UI icin, sadece high degil)."""
+        try:
+            return await self._fetch_forexfactory(hours_ahead, limit, impacts=impacts)
+        except Exception:
+            return []
+
     async def _fetch_forexfactory(
-        self, hours_ahead: int, limit: int
+        self, hours_ahead: int, limit: int, impacts: tuple[str, ...] = ("high",)
     ) -> list[dict[str, str]]:
         now_utc = datetime.now(timezone.utc)
         end_utc = now_utc + timedelta(hours=hours_ahead)
+        impact_set = {i.lower() for i in impacts}
 
         results: list[dict[str, str]] = []
         async with httpx.AsyncClient(
@@ -80,7 +93,7 @@ class CalendarService:
 
                 for item in events:
                     impact = str(item.get("impact", "")).lower()
-                    if impact != "high":
+                    if impact not in impact_set:
                         continue
 
                     dt = _parse_ff_date(str(item.get("date", "")))
@@ -93,7 +106,7 @@ class CalendarService:
                         "date": dt.strftime("%Y-%m-%d %H:%M"),
                         "country": str(item.get("country", "")),
                         "event": str(item.get("title", "")),
-                        "impact": "high",
+                        "impact": impact,
                         "actual":   str(item.get("actual",   "") or ""),
                         "forecast": str(item.get("forecast", "") or ""),
                         "previous": str(item.get("previous", "") or ""),
